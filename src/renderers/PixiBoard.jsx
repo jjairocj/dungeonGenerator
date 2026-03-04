@@ -1,5 +1,5 @@
 import { useEffect, useRef, useCallback } from 'react';
-import { Application, Graphics, Container } from 'pixi.js';
+import { Application, Graphics, Container, DisplacementFilter, Assets, Sprite } from 'pixi.js';
 import { useBoardStore } from '../store/boardStore';
 
 const TILE_SIZE = 50;
@@ -24,7 +24,11 @@ export default function PixiBoard() {
     const canvasRef = useRef(null);
     const appRef = useRef(null);
     const tilesGfxRef = useRef({});
-    const effectsRef = useRef({ clouds: [], rain: [], embers: [], cloudCont: null, rainCont: null, emberCont: null });
+    const effectsRef = useRef({
+        clouds: [], rain: [], embers: [],
+        cloudCont: null, rainCont: null, emberCont: null,
+        waterCont: null, displacementSprite: null
+    });
     const timeRef = useRef(0);
     const paintingRef = useRef(false);
     const stateRef = useRef({});
@@ -38,7 +42,6 @@ export default function PixiBoard() {
     const effects = useBoardStore((s) => s.effects);
     const currentBiome = useBoardStore((s) => s.currentBiome);
     const placeTile = useBoardStore((s) => s.placeTile);
-    const setIsPainting = useBoardStore((s) => s.setIsPainting);
 
     stateRef.current = { tiles, effects, currentBiome, placeTile };
 
@@ -52,25 +55,60 @@ export default function PixiBoard() {
         gfx.x = x;
         gfx.y = y;
 
-        const { effects: fx, currentBiome: biome } = stateRef.current;
-
         if (tileType === 'water') {
-            // Base
+            // Zelda EoW Style: Bright, clean cel-shaded water
+            const waterBase = 0x3ab3d5;    // Bright cyan/turquoise
+            const waterDeep = 0x2b9ec2;    // Slightly deeper cyan
+            const waterCaustic = 0x88e8f9; // Bright caustic cyan
+            const waterFoam = 0xffffff;
+
+            // Base Background
             gfx.roundRect(0, 0, TILE_SIZE, TILE_SIZE, 3);
-            gfx.fill({ color: colors.base });
-            // Animated waves
-            for (let w = 0; w < 3; w++) {
-                const wy = 10 + w * 13;
-                const off = Math.sin(t * 2.0 + w * 1.2 + col * 0.5) * 4;
-                gfx.moveTo(4, wy + off);
-                gfx.bezierCurveTo(15, wy + off - 4, 30, wy + off + 4, TILE_SIZE - 4, wy - off);
-                gfx.stroke({ color: colors.detail, width: 1.5, alpha: 0.7 });
+            gfx.fill({ color: waterBase });
+
+            // Using a mask so caustics don't bleed out of the tile
+            gfx.beginPath();
+            gfx.roundRect(0, 0, TILE_SIZE, TILE_SIZE, 3);
+
+            // Procedural Caustics
+            // Draw moving sine wave layers
+            const waveSpeed1 = t * 1.2;
+            const waveSpeed2 = t * 0.8;
+
+            gfx.beginPath();
+            for (let i = 0; i < 3; i++) {
+                // Horizontal wavy lines
+                const y1 = ((i * 20 + waveSpeed1 * 15) % 60) - 10;
+                gfx.moveTo(-5, y1 + Math.sin(col + i) * 6);
+                gfx.lineTo(TILE_SIZE + 5, y1 + 10 + Math.cos(row + i) * 6);
+
+                // Vertical intersecting wavy lines
+                const x1 = ((i * 20 - waveSpeed2 * 10) % 60) - 10;
+                gfx.moveTo(x1 + Math.cos(col + i) * 6, -5);
+                gfx.lineTo(x1 + 10 + Math.sin(row + i) * 6, TILE_SIZE + 5);
             }
-            // Shimmer dot
-            const sx = ((Math.sin(t * 1.5 + col * 0.7) * 0.5 + 0.5) * (TILE_SIZE - 12)) + 6;
-            const sy = ((Math.cos(t * 1.8 + row * 0.9) * 0.5 + 0.5) * (TILE_SIZE - 12)) + 6;
-            gfx.ellipse(sx, sy, 4, 2);
-            gfx.fill({ color: 0xffffff, alpha: 0.3 });
+            gfx.stroke({ color: waterCaustic, width: 2, alpha: 0.6 });
+
+            // Subtly darker bottom edge for depth
+            gfx.rect(0, TILE_SIZE - 6, TILE_SIZE, 6);
+            gfx.fill({ color: waterDeep, alpha: 0.4 });
+
+            // Animated Foam Edge at the top (Shoreline)
+            gfx.beginPath();
+            const foamWave = Math.sin(t * 2.5 + col * 1.5) * 2;
+            gfx.moveTo(0, 4 + foamWave);
+            gfx.bezierCurveTo(15, 6 + foamWave, 35, 2 + foamWave, TILE_SIZE, 4 + foamWave);
+            gfx.stroke({ color: waterFoam, width: 2.5, alpha: 0.85 });
+
+            // Sparkles
+            const sparkleCycle = (t * 2.0 + row * 1.7 + col * 1.1) % Math.PI;
+            const sparkleAlpha = Math.sin(sparkleCycle);
+            if (sparkleAlpha > 0.1) {
+                const sx = 10 + (col * 13 % 30);
+                const sy = 15 + (row * 17 % 20);
+                gfx.circle(sx, sy, 1.5);
+                gfx.fill({ color: 0xffffff, alpha: sparkleAlpha * 0.8 });
+            }
 
         } else if (tileType === 'lava') {
             gfx.roundRect(0, 0, TILE_SIZE, TILE_SIZE, 3);
@@ -88,6 +126,9 @@ export default function PixiBoard() {
         } else if (tileType === 'forest') {
             gfx.roundRect(0, 0, TILE_SIZE, TILE_SIZE, 3);
             gfx.fill({ color: colors.base });
+            // The `fx` variable here is not defined in this scope. It should be passed as an argument or accessed from a ref.
+            // Assuming `fx` is available from `stateRef.current.effects`
+            const fx = stateRef.current.effects;
             const wind = fx.wind ? Math.sin(t * 2.0 + col * 0.8 + row * 0.5) * fx.windIntensity * 5 : 0;
             // Trunk
             gfx.rect(21 + wind * 0.3, 33, 7, 12);
@@ -105,6 +146,9 @@ export default function PixiBoard() {
             gfx.rect(0, 0, TILE_SIZE, 3);
             gfx.fill({ color: 0x7ac47c, alpha: 0.4 });
             // Grass tufts
+            // The `fx` variable here is not defined in this scope. It should be passed as an argument or accessed from a ref.
+            // Assuming `fx` is available from `stateRef.current.effects`
+            const fx = stateRef.current.effects;
             const wind = fx.wind ? Math.sin(t * 2.2 + col * 0.6 + row * 0.4) * fx.windIntensity * 3 : 0;
             [[8, 36], [14, 28], [24, 34], [34, 26], [42, 36]].forEach(([gx, gy]) => {
                 gfx.moveTo(gx, gy);
@@ -172,18 +216,44 @@ export default function PixiBoard() {
         boardWRef.current = bW;
         boardHRef.current = bH;
 
-        app.init({
-            canvas: canvasRef.current,
-            width: bW,
-            height: bH,
-            background: 0x0a0a0f,
-            antialias: true,
-            resolution: Math.min(window.devicePixelRatio || 1, 2),
-            autoDensity: true,
-        }).then(() => {
+        const initPixiApp = async () => {
+            await app.init({
+                canvas: canvasRef.current,
+                width: bW,
+                height: bH,
+                background: 0x0a0a0f,
+                antialias: true,
+                resolution: Math.min(window.devicePixelRatio || 1, 2),
+                autoDensity: true,
+            });
+
+            // Preload displacement map
+            let dispTexture = null;
+            try {
+                dispTexture = await Assets.load('/cloud.jpg');
+                if (dispTexture.source) dispTexture.source.addressMode = 'repeat';
+            } catch (err) {
+                console.warn("Could not load cloud.jpg", err);
+            }
+
             // Tile layer
             const tileContainer = new Container();
             app.stage.addChild(tileContainer);
+
+            // Water layer underneath other tiles but with filter
+            const waterContainer = new Container();
+            app.stage.addChildAt(waterContainer, 0); // Background layer
+            effectsRef.current.waterCont = waterContainer;
+
+            if (dispTexture) {
+                const dispSprite = new Sprite(dispTexture);
+                dispSprite.scale.set(1.5); // Matches RedStapler approach
+                app.stage.addChild(dispSprite); // Needed for Pixi filters
+                dispSprite.renderable = false; // Hide it from normal rendering
+                const dispFilter = new DisplacementFilter({ sprite: dispSprite, scale: { x: 20, y: 20 } });
+                waterContainer.filters = [dispFilter];
+                effectsRef.current.displacementSprite = dispSprite;
+            }
 
             // Effects layer
             const fxContainer = new Container();
@@ -194,12 +264,19 @@ export default function PixiBoard() {
             for (let r = 0; r < rows; r++) {
                 for (let c = 0; c < cols; c++) {
                     const key = `${c},${r}`;
+                    const tileType = tiles[key] || 'grass';
                     const gfx = new Graphics();
-                    drawTile(gfx, c, r, tiles[key] || 'grass', 0);
+                    drawTile(gfx, c, r, tileType, 0);
                     gfx.eventMode = 'static';
                     gfx.cursor = 'crosshair';
-                    tileContainer.addChild(gfx);
-                    tilesGfxRef.current[key] = { gfx, col: c, row: r };
+
+                    if (tileType === 'water') {
+                        waterContainer.addChild(gfx);
+                    } else {
+                        tileContainer.addChild(gfx);
+                    }
+
+                    tilesGfxRef.current[key] = { gfx, col: c, row: r, type: tileType, waterCont: waterContainer, tileCont: tileContainer };
 
                     gfx.on('pointerdown', () => {
                         paintingRef.current = true;
@@ -276,21 +353,23 @@ export default function PixiBoard() {
             }
             effectsRef.current.embers = embers;
 
-            // --- Animation loop (manual RAF, skip PixiJS ticker to avoid StrictMode issues) ---
-            let lastTime = performance.now();
-            const animate = (now) => {
-                const dt = Math.min((now - lastTime) / 1000, 0.05);
-                lastTime = now;
-                timeRef.current += dt;
+            // --- Animation loop ---
+            const renderFrame = () => {
                 const t = timeRef.current;
                 const { tiles, effects: fx, currentBiome: biome } = stateRef.current;
 
-                // Redraw animated tiles
+                // Animate Water Displacement (RedStapler)
+                if (effectsRef.current.displacementSprite) {
+                    effectsRef.current.displacementSprite.x += 1;
+                    effectsRef.current.displacementSprite.y -= 1;
+                }
+
+                // Redraw animated tiles (water no longer needs procedural redraw since filter does it)
                 for (let r = 0; r < rows; r++) {
                     for (let c = 0; c < cols; c++) {
                         const key = `${c},${r}`;
                         const tt = tiles[key] || 'grass';
-                        if (['water', 'lava', 'forest', 'grass'].includes(tt)) {
+                        if (['lava', 'forest', 'grass'].includes(tt)) {
                             drawTile(tilesGfxRef.current[key].gfx, c, r, tt, t);
                         }
                     }
@@ -332,14 +411,18 @@ export default function PixiBoard() {
 
                 // Render
                 app.renderer.render(app.stage);
-                animFrameRef.current = requestAnimationFrame(animate);
+                animFrameRef.current = requestAnimationFrame(renderFrame);
             };
-            animFrameRef.current = requestAnimationFrame(animate);
-        });
+            animFrameRef.current = requestAnimationFrame(renderFrame);
+        };
+        initPixiApp();
 
         return () => {
             if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
-            // Don't destroy app on StrictMode unmount; check flag
+            if (appRef.current) {
+                appRef.current.destroy({ removeView: true, children: true });
+                appRef.current = null;
+            }
         };
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
@@ -347,10 +430,21 @@ export default function PixiBoard() {
     // Sync non-animated tile changes immediately
     useEffect(() => {
         if (!tilesGfxRef.current) return;
-        Object.entries(tilesGfxRef.current).forEach(([key, { gfx, col, row }]) => {
+        Object.entries(tilesGfxRef.current).forEach(([key, { gfx, col, row, type, waterCont, tileCont }]) => {
             const tileType = tiles[key] || 'grass';
-            if (!['water', 'lava', 'forest', 'grass'].includes(tileType)) {
-                drawTile(gfx, col, row, tileType, timeRef.current);
+            // If the type changed, we must move it to the correct container and update its stored type
+            if (type !== tileType) {
+                if (tileType === 'water') {
+                    waterCont.addChild(gfx);
+                } else {
+                    tileCont.addChild(gfx);
+                }
+                tilesGfxRef.current[key].type = tileType;
+
+                // If it's not animated by the render loop (like grass, dirt, wall, sand, etc.), draw it once
+                if (!['lava', 'forest'].includes(tileType)) {
+                    drawTile(gfx, col, row, tileType, timeRef.current);
+                }
             }
         });
     }, [tiles, drawTile]);
