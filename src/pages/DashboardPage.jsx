@@ -2,7 +2,6 @@ import { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuthStore } from '../store/authStore';
 import api from '../services/api';
-import '../styles/dashboard.css';
 
 export default function DashboardPage() {
     const { user, logout } = useAuthStore();
@@ -23,68 +22,67 @@ export default function DashboardPage() {
         try {
             const res = await api.post('/maps', { name: 'New Map', width: 20, height: 14, biome: 'plains' });
             navigate(`/editor/${res.data.map.id}`);
-        } catch (err) {
-            console.error(err);
-        } finally {
-            setCreating(false);
-        }
-    };
-
-    const handleLogout = async () => {
-        await logout();
-        navigate('/login');
+        } catch (err) { console.error(err); }
+        finally { setCreating(false); }
     };
 
     return (
-        <div className="dashboard">
-            <header className="dashboard__header">
-                <div className="dashboard__brand">
-                    <span className="dashboard__icon">⚔️</span>
-                    <h1>DungeonGenerator</h1>
+        <div className="min-h-screen bg-dnd-bg flex flex-col">
+            {/* Header */}
+            <header className="bg-dnd-panel border-b border-dnd-border px-6 py-3 flex items-center justify-between shadow-lg">
+                <div className="flex items-center gap-3">
+                    <span className="text-2xl">⚔️</span>
+                    <h1 className="font-cinzel text-lg text-dnd-gold tracking-widest">DungeonGenerator</h1>
                 </div>
-                <div className="dashboard__user">
-                    <span className="dashboard__username">👤 {user?.username}</span>
-                    <button className="dashboard__logout" onClick={handleLogout}>Logout</button>
+                <div className="flex items-center gap-4">
+                    <span className="text-dnd-muted text-sm">👤 {user?.username}</span>
+                    <button onClick={async () => { await logout(); navigate('/login'); }}
+                        className="text-dnd-muted text-sm border border-dnd-border px-3 py-1.5 rounded-lg hover:border-dnd-gold hover:text-dnd-gold transition">
+                        Logout
+                    </button>
                 </div>
             </header>
 
-            <main className="dashboard__main">
-                <div className="dashboard__toolbar">
-                    <h2>My Maps</h2>
-                    <button className="btn-primary" onClick={createMap} disabled={creating}>
+            {/* Main */}
+            <main className="flex-1 p-6 max-w-6xl mx-auto w-full">
+                <div className="flex items-center justify-between mb-6">
+                    <h2 className="font-cinzel text-dnd-text text-lg">My Maps</h2>
+                    <button onClick={createMap} disabled={creating}
+                        className="bg-dnd-gold hover:bg-dnd-gold-lt text-dnd-bg font-bold text-sm px-4 py-2 rounded-lg transition disabled:opacity-50">
                         {creating ? 'Creating...' : '+ New Map'}
                     </button>
                 </div>
 
                 {loading ? (
-                    <div className="dashboard__loading">
-                        <div className="spinner" />
+                    <div className="flex flex-col items-center justify-center py-20 gap-4 text-dnd-muted">
+                        <div className="w-8 h-8 border-2 border-dnd-border border-t-dnd-gold rounded-full animate-spin" />
                         <p>Loading your maps...</p>
                     </div>
                 ) : maps.length === 0 ? (
-                    <div className="dashboard__empty">
-                        <p>🗺️ No maps yet.</p>
-                        <p>Create your first map to begin your adventure!</p>
-                        <button className="btn-primary" onClick={createMap} disabled={creating}>
+                    <div className="flex flex-col items-center justify-center py-20 gap-4 text-dnd-muted text-center">
+                        <span className="text-6xl opacity-40">🗺️</span>
+                        <p className="text-lg">No maps yet.</p>
+                        <p className="text-sm">Create your first map to begin your adventure!</p>
+                        <button onClick={createMap} disabled={creating}
+                            className="mt-4 bg-dnd-gold hover:bg-dnd-gold-lt text-dnd-bg font-bold px-6 py-2.5 rounded-lg transition disabled:opacity-50">
                             + Create First Map
                         </button>
                     </div>
                 ) : (
-                    <div className="dashboard__grid">
+                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
                         {maps.map((map) => (
-                            <Link key={map.id} to={`/editor/${map.id}`} className="map-card">
-                                <div className="map-card__thumb">
+                            <Link key={map.id} to={`/editor/${map.id}`}
+                                className="bg-dnd-panel border border-dnd-border rounded-xl overflow-hidden hover:border-dnd-gold hover:-translate-y-1 hover:shadow-lg hover:shadow-dnd-gold/10 transition-all group">
+                                <div className="h-32 bg-dnd-bg flex items-center justify-center">
                                     {map.thumbnailUrl
-                                        ? <img src={map.thumbnailUrl} alt={map.name} />
-                                        : <span className="map-card__thumb-icon">🗺️</span>
+                                        ? <img src={map.thumbnailUrl} alt={map.name} className="w-full h-full object-cover" />
+                                        : <span className="text-4xl opacity-20">🗺️</span>
                                     }
                                 </div>
-                                <div className="map-card__info">
-                                    <span className="map-card__name">{map.name}</span>
-                                    <span className="map-card__meta">{map.width}×{map.height} · {map.biome}</span>
-                                    <span className="map-card__date">
-                                        {new Date(map.updatedAt).toLocaleDateString()}
-                                    </span>
+                                <div className="p-3 space-y-0.5">
+                                    <p className="text-dnd-text font-semibold text-sm truncate group-hover:text-dnd-gold transition">{map.name}</p>
+                                    <p className="text-dnd-muted text-xs">{map.width}×{map.height} · {map.biome}</p>
+                                    <p className="text-dnd-muted text-xs">{new Date(map.updatedAt).toLocaleDateString()}</p>
                                 </div>
                             </Link>
                         ))}

@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../store/authStore';
-import '../styles/auth.css';
 
 export default function LoginPage() {
     const [form, setForm] = useState({ email: '', password: '' });
@@ -25,54 +24,58 @@ export default function LoginPage() {
     };
 
     return (
-        <div className="auth-page">
-            <div className="auth-card">
-                <div className="auth-card__logo">⚔️</div>
-                <h1 className="auth-card__title">DungeonGenerator</h1>
-                <p className="auth-card__subtitle">Sign in to your realm</p>
+        <div className="min-h-screen flex items-center justify-center bg-dnd-bg px-4">
+            <div className="w-full max-w-md bg-dnd-panel border border-dnd-border rounded-2xl p-8 shadow-2xl">
+                {/* Logo */}
+                <div className="text-center mb-6">
+                    <span className="text-5xl">⚔️</span>
+                    <h1 className="font-cinzel text-2xl text-dnd-gold mt-2 tracking-widest">DungeonGenerator</h1>
+                    <p className="text-dnd-muted text-sm mt-1">Sign in to your realm</p>
+                </div>
 
-                <form className="auth-form" onSubmit={handleSubmit}>
-                    <div className="auth-form__field">
-                        <label htmlFor="email">Email</label>
+                <form onSubmit={handleSubmit} className="space-y-4">
+                    <div>
+                        <label className="block text-xs text-dnd-muted uppercase tracking-widest mb-1">Email</label>
                         <input
-                            id="email"
-                            type="email"
-                            autoComplete="email"
+                            id="email" type="email" autoComplete="email" required
                             value={form.email}
                             onChange={(e) => setForm({ ...form, email: e.target.value })}
                             placeholder="dm@yourworld.com"
-                            required
+                            className="w-full bg-dnd-bg border border-dnd-border rounded-lg px-4 py-2.5 text-dnd-text text-sm placeholder-dnd-muted/50 focus:outline-none focus:border-dnd-gold focus:ring-1 focus:ring-dnd-gold transition"
                         />
                     </div>
-                    <div className="auth-form__field">
-                        <label htmlFor="password">Password</label>
+                    <div>
+                        <label className="block text-xs text-dnd-muted uppercase tracking-widest mb-1">Password</label>
                         <input
-                            id="password"
-                            type="password"
-                            autoComplete="current-password"
+                            id="password" type="password" autoComplete="current-password" required
                             value={form.password}
                             onChange={(e) => setForm({ ...form, password: e.target.value })}
                             placeholder="••••••••"
-                            required
+                            className="w-full bg-dnd-bg border border-dnd-border rounded-lg px-4 py-2.5 text-dnd-text text-sm placeholder-dnd-muted/50 focus:outline-none focus:border-dnd-gold focus:ring-1 focus:ring-dnd-gold transition"
                         />
                     </div>
 
-                    {error && <p className="auth-form__error">⚠️ {error}</p>}
+                    {error && (
+                        <p className="text-red-400 text-sm bg-red-900/20 border border-red-800 rounded-lg px-3 py-2">⚠️ {error}</p>
+                    )}
 
-                    <button className="auth-form__submit" type="submit" disabled={loading}>
+                    <button
+                        type="submit" disabled={loading}
+                        className="w-full bg-dnd-gold hover:bg-dnd-gold-lt text-dnd-bg font-bold font-cinzel tracking-wide py-2.5 rounded-lg transition disabled:opacity-50 disabled:cursor-not-allowed mt-2"
+                    >
                         {loading ? 'Signing in...' : 'Enter the Dungeon'}
                     </button>
                 </form>
 
-                <p className="auth-card__footer">
-                    New adventurer?{' '}
-                    <Link to="/register">Create an account</Link>
-                </p>
-                <p className="auth-card__footer">
-                    <Link to="/editor-guest" className="auth-card__guest">
+                <div className="mt-5 text-center space-y-2">
+                    <p className="text-dnd-muted text-sm">
+                        New adventurer?{' '}
+                        <Link to="/register" className="text-dnd-gold font-semibold hover:underline">Create an account</Link>
+                    </p>
+                    <Link to="/editor-guest" className="text-dnd-muted/60 text-xs hover:text-dnd-muted block">
                         ⚡ Continue as guest (no save)
                     </Link>
-                </p>
+                </div>
             </div>
         </div>
     );
