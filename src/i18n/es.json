@@ -82,6 +82,13 @@
             "title": "Relleno de Bioma",
             "hint": "Rellena todo el tablero con tiles del bioma"
         },
+        "layers": {
+            "title": "Gestión de Capas",
+            "addLevel": "➕ Piso",
+            "addLayer": "➕ Añadir Capa",
+            "visibility": "Visibilidad",
+            "lock": "Bloqueo"
+        },
         "effects": {
             "title": "Efectos Dinámicos",
             "clouds": "☁️ Nubes",

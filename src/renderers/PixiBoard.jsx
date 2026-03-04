@@ -106,7 +106,7 @@ export default function PixiBoard() {
     const canvasRef = useRef(null);
     const containerRef = useRef(null);
     const appRef = useRef(null);
-    const tilesGfxRef = useRef({});
+    const layersGfxRef = useRef([]);
     const effectsRef = useRef({
         clouds: [], rain: [], embers: [],
         cloudCont: null, rainCont: null, emberCont: null,
@@ -115,12 +115,16 @@ export default function PixiBoard() {
     });
     const timeRef = useRef(0);
     const paintingRef = useRef(false);
+    const dragStartRef = useRef(null);
+    const shapePreviewRef = useRef(null);
     const stateRef = useRef({});
     const animFrameRef = useRef(null);
     const cameraRef = useRef(null);
 
     // ── Store ──
-    const tiles = useBoardStore((s) => s.tiles);
+    const levels = useBoardStore((s) => s.levels);
+    const activeLevelIndex = useBoardStore((s) => s.activeLevelIndex);
+    const activeLayerIndex = useBoardStore((s) => s.activeLayerIndex);
     const gridCols = useBoardStore((s) => s.gridCols);
     const gridRows = useBoardStore((s) => s.gridRows);
     const effects = useBoardStore((s) => s.effects);
@@ -130,11 +134,19 @@ export default function PixiBoard() {
     const selectedTile = useBoardStore((s) => s.selectedTile);
     const placeTile = useBoardStore((s) => s.placeTile);
     const floodFillAt = useBoardStore((s) => s.floodFillAt);
+    const fillShape = useBoardStore((s) => s.fillShape);
     const undo = useBoardStore((s) => s.undo);
     const redo = useBoardStore((s) => s.redo);
 
+    // Selection (G-13)
+    const selectionCoords = useBoardStore((s) => s.selectionCoords);
+    const setSelection = useBoardStore((s) => s.setSelection);
+    const clearSelection = useBoardStore((s) => s.clearSelection);
+    const copySelection = useBoardStore((s) => s.copySelection);
+    const pasteClipboard = useBoardStore((s) => s.pasteClipboard);
+
     // Keep stateRef current for use inside closures
-    stateRef.current = { tiles, effects, currentBiome, paintMode, selectedTile, placeTile, floodFillAt };
+    stateRef.current = { levels, activeLevelIndex, activeLayerIndex, effects, currentBiome, paintMode, selectedTile, placeTile, floodFillAt, fillShape, selectionCoords, setSelection, clearSelection };
 
     // ─ Tile draw logic ─
     const drawTile = useCallback((gfx, col, row, tileType, t) => {
@@ -256,22 +268,34 @@ export default function PixiBoard() {
 
     }, []);
 
-    // ─── Keyboard shortcuts: Ctrl+Z / Ctrl+Y (G-07) ──────────────────────────
+    // ─── Keyboard shortcuts: Ctrl+Z / Ctrl+Y / Ctrl+C / Ctrl+V ─────────────────
     useEffect(() => {
         const handleKey = (e) => {
-            if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) {
-                e.preventDefault();
-                undo();
-            } else if (
-                (e.ctrlKey || e.metaKey) && (e.key === 'y' || (e.key === 'z' && e.shiftKey))
-            ) {
-                e.preventDefault();
-                redo();
+            if (e.ctrlKey || e.metaKey) {
+                if (e.key === 'z' && !e.shiftKey) {
+                    e.preventDefault();
+                    undo();
+                } else if (e.key === 'y' || (e.key === 'z' && e.shiftKey)) {
+                    e.preventDefault();
+                    redo();
+                } else if (e.key === 'c' || e.key === 'C') {
+                    e.preventDefault();
+                    copySelection();
+                } else if (e.key === 'v' || e.key === 'V') {
+                    e.preventDefault();
+                    if (cameraRef.current && appRef.current) {
+                        const { x, y } = cameraRef.current.screenToWorld(
+                            appRef.current.screen.width / 2,
+                            appRef.current.screen.height / 2
+                        );
+                        pasteClipboard(Math.floor(x / STEP), Math.floor(y / STEP));
+                    }
+                }
             }
         };
         window.addEventListener('keydown', handleKey);
         return () => window.removeEventListener('keydown', handleKey);
-    }, [undo, redo]);
+    }, [undo, redo, copySelection, pasteClipboard]);
 
     // ─── PixiJS initialization ────────────────────────────────────────────────
     useEffect(() => {
@@ -317,49 +341,95 @@ export default function PixiBoard() {
                 console.warn('Could not load cloud.jpg', err);
             }
 
-            // ── Containers (order = painter's algorithm) ───────────────────
-            const waterContainer = new Container();
-            worldContainer.addChildAt(waterContainer, 0);
-            effectsRef.current.waterCont = waterContainer;
-
+            // ── Efectos de Agua Centralizados ─────────────────────────────────────────
+            // We create a master displacement sprite for all water layers to share the same texture memory
+            let dispSprite = null;
             if (dispTexture) {
-                const dispSprite = new Sprite(dispTexture);
+                dispSprite = new Sprite(dispTexture);
                 dispSprite.scale.set(1.5);
                 dispSprite.renderable = false;
                 app.stage.addChild(dispSprite); // Must be on stage for filter to work
-                const dispFilter = new DisplacementFilter({ sprite: dispSprite, scale: { x: 20, y: 20 } });
-                waterContainer.filters = [dispFilter];
-                effectsRef.current.displacementSprite = dispSprite;
             }
-
-            const tileContainer = new Container();
-            worldContainer.addChild(tileContainer);
 
             // ── Effects container ──────────────────────────────────────────
             const fxContainer = new Container();
             worldContainer.addChild(fxContainer);
 
-            // ── Build tile graphics ────────────────────────────────────────
-            const { tiles: initTiles } = stateRef.current;
-            for (let r = 0; r < rows; r++) {
-                for (let c = 0; c < cols; c++) {
-                    const key = `${c},${r}`;
-                    const tileType = initTiles[key] || 'grass';
-                    const gfx = new Graphics();
-                    drawTile(gfx, c, r, tileType, 0);
+            // ── Shape Preview Container (G-08) ────────
+            const shapePreview = new Graphics();
+            shapePreview.eventMode = 'none';
+            worldContainer.addChild(shapePreview);
+            shapePreviewRef.current = shapePreview;
 
-                    if (tileType === 'water') {
-                        waterContainer.addChild(gfx);
-                    } else {
-                        tileContainer.addChild(gfx);
+            // ── Selection Box Container (G-13) ────────
+            const selectionBox = new Graphics();
+            selectionBox.eventMode = 'none';
+            worldContainer.addChild(selectionBox);
+            effectsRef.current.selectionBox = selectionBox;
+
+            // ── Dynamic Level/Layer Containers (G-09, G-11) ────────
+            // Instead of one flat tile container, we hold layered containers
+            // structure: layersGfxRef.current[levelIndex][layerIndex] = { cont: Container, tiles: { "x,y": { gfx, type, waterCont... } } }
+            layersGfxRef.current = [];
+            const { levels } = stateRef.current;
+
+            // We create containers for the first few possible levels to be safe, or just map the existing ones
+            levels.forEach((level, lIndex) => {
+                const levelCont = new Container();
+                worldContainer.addChildAt(levelCont, lIndex); // Insert levels dynamically at the bottom of the stack
+                layersGfxRef.current[lIndex] = {
+                    container: levelCont,
+                    layers: []
+                };
+
+                level.layers.forEach((layer, lyIndex) => {
+                    const layerCont = new Container();
+                    const wCont = new Container(); // Water container per layer if needed
+
+                    if (lyIndex === 0 && lIndex === 0 && dispSprite) {
+                        // Apply water shader only to base layer of base floor for now
+                        const dispFilter = new DisplacementFilter({ sprite: dispSprite, scale: { x: 20, y: 20 } });
+                        wCont.filters = [dispFilter];
                     }
 
-                    tilesGfxRef.current[key] = {
-                        gfx, col: c, row: r, type: tileType,
-                        waterCont: waterContainer, tileCont: tileContainer
+                    layerCont.addChild(wCont);
+                    levelCont.addChild(layerCont);
+
+                    const layerTiles = {};
+                    // Build initial graphic objects
+                    for (let r = 0; r < rows; r++) {
+                        for (let c = 0; c < cols; c++) {
+                            const key = `${c},${r}`;
+                            const tileType = layer.tiles[key];
+                            const gfx = new Graphics();
+
+                            if (tileType) {
+                                drawTile(gfx, c, r, tileType, 0);
+                            } else {
+                                gfx.clear(); // Transparent
+                            }
+
+                            if (tileType === 'water') {
+                                wCont.addChild(gfx);
+                            } else {
+                                layerCont.addChild(gfx);
+                            }
+
+                            layerTiles[key] = {
+                                gfx, col: c, row: r, type: tileType,
+                                waterCont: wCont, tileCont: layerCont
+                            };
+                        }
+                    }
+
+                    layersGfxRef.current[lIndex].layers[lyIndex] = {
+                        container: layerCont,
+                        waterContainer: wCont,
+                        tiles: layerTiles
                     };
-                }
-            }
+                });
+            });
+            console.log(`[PixiBoard] Initialized ${levels.length} levels. Board Children total: ${worldContainer.children.length}`);
 
             // ── Pointer events on World Container (G-04 Paint) ──────────
             worldContainer.eventMode = 'static';
@@ -380,6 +450,43 @@ export default function PixiBoard() {
                 const c = Math.floor(pos.x / STEP);
                 const r = Math.floor(pos.y / STEP);
 
+                if (pm === PAINT_MODES.RECTANGLE || pm === PAINT_MODES.ELLIPSE) {
+                    if (!isDrag) {
+                        dragStartRef.current = { c, r };
+                        if (shapePreviewRef.current) shapePreviewRef.current.clear();
+                    } else if (dragStartRef.current && shapePreviewRef.current) {
+                        const startC = Math.max(0, Math.min(cols - 1, dragStartRef.current.c));
+                        const startR = Math.max(0, Math.min(rows - 1, dragStartRef.current.r));
+                        const endC = Math.max(0, Math.min(cols - 1, c));
+                        const endR = Math.max(0, Math.min(rows - 1, r));
+
+                        const minC = Math.min(startC, endC);
+                        const maxC = Math.max(startC, endC);
+                        const minR = Math.min(startR, endR);
+                        const maxR = Math.max(startR, endR);
+
+                        const pGfx = shapePreviewRef.current;
+                        pGfx.clear();
+
+                        if (pm === PAINT_MODES.RECTANGLE) {
+                            pGfx.rect(minC * STEP, minR * STEP, (maxC - minC + 1) * STEP, (maxR - minR + 1) * STEP);
+                            pGfx.fill({ color: 0x3498db, alpha: 0.3 });
+                            pGfx.stroke({ color: 0x2980b9, width: 2, alpha: 0.8 });
+                        } else if (pm === PAINT_MODES.ELLIPSE) {
+                            const wC = maxC - minC;
+                            const hR = maxR - minR;
+                            const cx = (minC + wC / 2) * STEP + STEP / 2;
+                            const cy = (minR + hR / 2) * STEP + STEP / 2;
+                            const rx = ((wC + 1) * STEP) / 2;
+                            const ry = ((hR + 1) * STEP) / 2;
+                            pGfx.ellipse(cx, cy, rx, ry);
+                            pGfx.fill({ color: 0x3498db, alpha: 0.3 });
+                            pGfx.stroke({ color: 0x2980b9, width: 2, alpha: 0.8 });
+                        }
+                    }
+                    return; // Skip drawing tiles individually
+                }
+
                 if (c >= 0 && c < cols && r >= 0 && r < rows) {
                     if (pm === PAINT_MODES.FILL && !isDrag) {
                         ff(c, r);
@@ -398,10 +505,37 @@ export default function PixiBoard() {
             app.stage.hitArea = app.screen;
 
             app.stage.on('pointerup', (e) => {
+                const pm = stateRef.current.paintMode;
+                if ((pm === PAINT_MODES.RECTANGLE || pm === PAINT_MODES.ELLIPSE || pm === PAINT_MODES.SELECT) && dragStartRef.current) {
+                    const pos = worldContainer.toLocal(e.global);
+                    const c = Math.floor(pos.x / STEP);
+                    const r = Math.floor(pos.y / STEP);
+
+                    if (pm === PAINT_MODES.SELECT) {
+                        const startC = Math.max(0, Math.min(cols - 1, dragStartRef.current.c));
+                        const startR = Math.max(0, Math.min(rows - 1, dragStartRef.current.r));
+                        const endC = Math.max(0, Math.min(cols - 1, c));
+                        const endR = Math.max(0, Math.min(rows - 1, r));
+                        stateRef.current.setSelection({
+                            minC: Math.min(startC, endC), maxC: Math.max(startC, endC),
+                            minR: Math.min(startR, endR), maxR: Math.max(startR, endR)
+                        });
+                    } else {
+                        stateRef.current.fillShape(dragStartRef.current.c, dragStartRef.current.r, c, r, pm);
+                    }
+
+                    dragStartRef.current = null;
+                    if (shapePreviewRef.current) shapePreviewRef.current.clear();
+                }
                 paintingRef.current = false;
                 camera.onPointerUp();
             });
             app.stage.on('pointerupoutside', (e) => {
+                const pm = stateRef.current.paintMode;
+                if ((pm === PAINT_MODES.RECTANGLE || pm === PAINT_MODES.ELLIPSE || pm === PAINT_MODES.SELECT) && dragStartRef.current) {
+                    dragStartRef.current = null;
+                    if (shapePreviewRef.current) shapePreviewRef.current.clear();
+                }
                 paintingRef.current = false;
                 camera.onPointerUp();
             });
@@ -500,7 +634,7 @@ export default function PixiBoard() {
             const renderFrame = () => {
                 timeRef.current += 0.016;
                 const t = timeRef.current;
-                const { tiles: currentTiles, effects: fx, currentBiome: biome } = stateRef.current;
+                const { effects: fx, currentBiome: biome } = stateRef.current;
 
                 // Displacement filter animation (water)
                 if (effectsRef.current.displacementSprite) {
@@ -508,16 +642,77 @@ export default function PixiBoard() {
                     effectsRef.current.displacementSprite.y -= 1;
                 }
 
-                // Animate dynamic tiles
-                for (let r = 0; r < rows; r++) {
-                    for (let c = 0; c < cols; c++) {
-                        const key = `${c},${r}`;
-                        const tt = currentTiles[key] || 'grass';
-                        if (['lava', 'forest', 'grass', 'water'].includes(tt)) {
-                            drawTile(tilesGfxRef.current[key].gfx, c, r, tt, t);
-                        }
+                // Draw static selection box (G-13)
+                const sb = effectsRef.current.selectionBox;
+                if (sb) {
+                    sb.clear();
+                    const { selectionCoords: sel } = stateRef.current;
+                    if (sel) {
+                        const w = (sel.maxC - sel.minC + 1) * STEP;
+                        const h = (sel.maxR - sel.minR + 1) * STEP;
+                        sb.rect(sel.minC * STEP, sel.minR * STEP, w, h);
+                        sb.fill({ color: 0xf1c40f, alpha: 0.15 });
+                        const pulse = (Math.sin(t * 4) * 0.5 + 0.5) * 0.5 + 0.5;
+                        sb.stroke({ color: 0xf39c12, width: 3, alpha: pulse });
                     }
                 }
+
+                // Animate dynamic tiles across all levels and layers
+                const { levels: currentLevels, activeLevelIndex } = stateRef.current;
+
+                currentLevels.forEach((level, lIndex) => {
+                    const levelRefs = layersGfxRef.current[lIndex];
+                    if (!levelRefs) return;
+
+                    // Fade underlying levels
+                    if (lIndex < activeLevelIndex) {
+                        levelRefs.container.alpha = 0.3; // Make lower floors semi-transparent
+                        levelRefs.container.visible = true;
+                    } else if (lIndex > activeLevelIndex) {
+                        levelRefs.container.visible = false; // Hide upper floors
+                    } else {
+                        levelRefs.container.alpha = 1.0;
+                        levelRefs.container.visible = true;
+                    }
+
+                    level.layers.forEach((layer, lyIndex) => {
+                        const layerRefs = levelRefs.layers[lyIndex];
+                        if (!layerRefs) return;
+
+                        layerRefs.container.visible = layer.visible;
+
+                        for (let r = 0; r < rows; r++) {
+                            for (let c = 0; c < cols; c++) {
+                                const key = `${c},${r}`;
+                                const tt = layer.tiles[key];
+                                const tileRef = layerRefs.tiles[key];
+
+                                // State reconciliation
+                                if (tileRef.type !== tt) {
+                                    tileRef.type = tt;
+                                    tileRef.gfx.clear();
+
+                                    // Move between standard and water containers based on type
+                                    if (tt === 'water') {
+                                        if (tileRef.gfx.parent !== layerRefs.waterContainer) {
+                                            layerRefs.waterContainer.addChild(tileRef.gfx);
+                                        }
+                                    } else {
+                                        if (tileRef.gfx.parent !== layerRefs.container) {
+                                            layerRefs.container.addChild(tileRef.gfx);
+                                        }
+                                    }
+
+                                    if (tt) {
+                                        drawTile(tileRef.gfx, c, r, tt, t);
+                                    }
+                                } else if (tt && ['lava', 'forest', 'grass', 'water'].includes(tt)) {
+                                    drawTile(tileRef.gfx, c, r, tt, t);
+                                }
+                            }
+                        }
+                    });
+                });
 
                 // Clouds
                 const wantClouds = fx.clouds || ['plains', 'forest'].includes(biome);
@@ -564,34 +759,19 @@ export default function PixiBoard() {
         return () => {
             if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
             if (appRef.current) {
-                appRef.current.destroy({ removeView: true, children: true });
+                // Do not use removeView: true as React manages the DOM node.
+                try {
+                    appRef.current.destroy(false, { children: true });
+                } catch (err) {
+                    console.warn("PixiJS App cleanup warning:", err);
+                }
                 appRef.current = null;
             }
         };
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [gridCols, gridRows]); // Reinitialize if grid size changes (G-01)
 
-    // ─── Tile repaint on store change ─────────────────────────────────────────
-    useEffect(() => {
-        if (!tilesGfxRef.current) return;
-        Object.entries(tilesGfxRef.current).forEach(([key, entry]) => {
-            const tileType = tiles[key] || 'grass';
-            if (entry.type === tileType) return;
-
-            // Move to correct container
-            if (tileType === 'water') {
-                entry.waterCont.addChild(entry.gfx);
-            } else {
-                entry.tileCont.addChild(entry.gfx);
-            }
-            entry.type = tileType;
-
-            // Redraw non-animated tiles immediately
-            if (!['lava', 'forest', 'grass', 'water'].includes(tileType)) {
-                drawTile(entry.gfx, entry.col, entry.row, tileType, timeRef.current);
-            }
-        });
-    }, [tiles, drawTile]);
+    // Tile reconciliation is now exclusively handled by renderFrame looping over stateRef.current.levels
 
     // ─── Cursor style based on paint mode ─────────────────────────────────────
     const getCursor = () => {
@@ -623,7 +803,7 @@ export default function PixiBoard() {
             }}
             onPointerUp={() => { paintingRef.current = false; }}
         >
-            <canvas ref={canvasRef} style={{ display: 'block', width: '100%', height: '100%' }} />
+            <canvas key={`${gridCols}-${gridRows}`} ref={canvasRef} style={{ display: 'block', width: '100%', height: '100%' }} />
 
             {/* Zoom Controls Overlay */}
             <div style={{

@@ -82,6 +82,13 @@
             "title": "Biome Fill",
             "hint": "Flood-fills entire board with biome tiles"
         },
+        "layers": {
+            "title": "Layer Management",
+            "addLevel": "➕ Floor",
+            "addLayer": "➕ Add Layer",
+            "visibility": "Visibility",
+            "lock": "Lock"
+        },
         "effects": {
             "title": "Dynamic Effects",
             "clouds": "☁️ Clouds",

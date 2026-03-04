@@ -21,6 +21,17 @@ export default function DMPanel() {
     const gridRows = useBoardStore((s) => s.gridRows);
     const setGridSize = useBoardStore((s) => s.setGridSize);
 
+    // G-09, G-11: Layers and Levels
+    const levels = useBoardStore((s) => s.levels);
+    const activeLevelIndex = useBoardStore((s) => s.activeLevelIndex);
+    const activeLayerIndex = useBoardStore((s) => s.activeLayerIndex);
+    const setActiveLevel = useBoardStore((s) => s.setActiveLevel);
+    const setActiveLayer = useBoardStore((s) => s.setActiveLayer);
+    const toggleLayerVisibility = useBoardStore((s) => s.toggleLayerVisibility);
+    const toggleLayerLock = useBoardStore((s) => s.toggleLayerLock);
+    const addLevel = useBoardStore((s) => s.addLevel);
+    const addLayer = useBoardStore((s) => s.addLayer);
+
     // G-02: Grid overlay toggle
     const showGrid = useBoardStore((s) => s.showGrid);
     const setShowGrid = useBoardStore((s) => s.setShowGrid);
@@ -42,6 +53,7 @@ export default function DMPanel() {
     const tabs = [
         { id: 'tiles', label: t('dmPanel.tabs.tiles') },
         { id: 'biomes', label: t('dmPanel.tabs.biomes') },
+        { id: 'layers', label: t('dmPanel.tabs.layers', 'Capas') },
         { id: 'effects', label: t('dmPanel.tabs.effects') },
         { id: 'audio', label: t('dmPanel.tabs.audio') },
     ];
@@ -55,13 +67,23 @@ export default function DMPanel() {
     };
 
     const applyGridSize = () => {
-        setGridSize(sizeInput.cols, sizeInput.rows);
+        const c = parseInt(sizeInput.cols, 10);
+        const r = parseInt(sizeInput.rows, 10);
+        if (!isNaN(c) && !isNaN(r) && c >= MIN_COLS && r >= MIN_ROWS) {
+            setGridSize(c, r);
+        } else {
+            // Revert if invalid
+            setSizeInput({ cols: gridCols, rows: gridRows });
+        }
     };
 
     const paintModes = [
         { id: PAINT_MODES.BRUSH, icon: '🖌️', label: t('dmPanel.tools.brush') },
         { id: PAINT_MODES.ERASER, icon: '🗑️', label: t('dmPanel.tools.eraser') },
         { id: PAINT_MODES.FILL, icon: '🪣', label: t('dmPanel.tools.fill') },
+        { id: PAINT_MODES.RECTANGLE, icon: '◫', label: t('dmPanel.tools.rectangle', 'Rectangle') },
+        { id: PAINT_MODES.ELLIPSE, icon: '⬬', label: t('dmPanel.tools.ellipse', 'Ellipse') },
+        { id: PAINT_MODES.SELECT, icon: '⬚', label: t('dmPanel.tools.select', 'Select') },
     ];
 
     return (
@@ -148,7 +170,7 @@ export default function DMPanel() {
                         type="number"
                         min={MIN_COLS} max={MAX_COLS}
                         value={sizeInput.cols}
-                        onChange={(e) => setSizeInput(s => ({ ...s, cols: parseInt(e.target.value) || s.cols }))}
+                        onChange={(e) => setSizeInput(s => ({ ...s, cols: e.target.value }))}
                         className="size-input"
                         title="Columns"
                     />
@@ -158,7 +180,7 @@ export default function DMPanel() {
                         type="number"
                         min={MIN_ROWS} max={MAX_ROWS}
                         value={sizeInput.rows}
-                        onChange={(e) => setSizeInput(s => ({ ...s, rows: parseInt(e.target.value) || s.rows }))}
+                        onChange={(e) => setSizeInput(s => ({ ...s, rows: e.target.value }))}
                         className="size-input"
                         title="Rows"
                     />
@@ -227,6 +249,77 @@ export default function DMPanel() {
                                     <span className="biome-btn__icon">{biome.icon}</span>
                                     <span className="biome-btn__label">{t(`biomes.${id}`)}</span>
                                 </button>
+                            ))}
+                        </div>
+                    </section>
+                )}
+
+                {/* --- LAYERS (G-09, G-11) --- */}
+                {activeSection === 'layers' && (
+                    <section className="dm-section dm-layers">
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+                            <h2 className="dm-section__title" style={{ margin: 0 }}>{t('dmPanel.layers.title')}</h2>
+                            <button className="dm-nav-btn" onClick={addLevel} title={t('dmPanel.layers.addLevel')} style={{ padding: '4px 8px' }}>➕ {t('dmPanel.layers.addLevel')}</button>
+                        </div>
+
+                        <div className="levels-list" style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                            {levels.map((level, lIdx) => (
+                                <div key={level.id} className={`level-card ${activeLevelIndex === lIdx ? 'active' : ''}`} style={{ border: '1px solid #334', borderRadius: 6, overflow: 'hidden' }}>
+                                    <div
+                                        className="level-header"
+                                        onClick={() => setActiveLevel(lIdx)}
+                                        style={{ padding: '8px 12px', background: activeLevelIndex === lIdx ? '#2a2a3a' : '#1a1a24', cursor: 'pointer', display: 'flex', justifyContent: 'space-between' }}
+                                    >
+                                        <strong>{level.name}</strong>
+                                    </div>
+                                    {activeLevelIndex === lIdx && (
+                                        <div className="layers-list" style={{ padding: '8px', background: '#14141d' }}>
+                                            {level.layers.map((layer, lyIdx) => (
+                                                <div
+                                                    key={layer.id}
+                                                    className={`layer-item ${activeLayerIndex === lyIdx ? 'active' : ''}`}
+                                                    onClick={() => setActiveLayer(lyIdx)}
+                                                    style={{
+                                                        display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                                                        padding: '6px 10px',
+                                                        marginBottom: 4,
+                                                        background: activeLayerIndex === lyIdx ? 'rgba(52, 152, 219, 0.2)' : 'rgba(255, 255, 255, 0.05)',
+                                                        border: activeLayerIndex === lyIdx ? '1px solid rgba(52, 152, 219, 0.5)' : '1px solid transparent',
+                                                        borderRadius: 4,
+                                                        cursor: 'pointer'
+                                                    }}
+                                                >
+                                                    <span className="layer-name" style={{ fontSize: '0.9rem', color: layer.visible ? '#fff' : '#666' }}>
+                                                        {layer.name}
+                                                    </span>
+                                                    <div className="layer-actions" style={{ display: 'flex', gap: 6 }}>
+                                                        <button
+                                                            onClick={(e) => { e.stopPropagation(); toggleLayerVisibility(lIdx, lyIdx); }}
+                                                            style={{ background: 'none', border: 'none', cursor: 'pointer', opacity: layer.visible ? 1 : 0.3 }}
+                                                            title={t('dmPanel.layers.visibility')}
+                                                        >
+                                                            {layer.visible ? '👁️' : '🚫'}
+                                                        </button>
+                                                        <button
+                                                            onClick={(e) => { e.stopPropagation(); toggleLayerLock(lIdx, lyIdx); }}
+                                                            style={{ background: 'none', border: 'none', cursor: 'pointer', opacity: layer.locked ? 1 : 0.3 }}
+                                                            title={t('dmPanel.layers.lock')}
+                                                        >
+                                                            {layer.locked ? '🔒' : '🔓'}
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            ))}
+                                            <button
+                                                className="dm-nav-btn"
+                                                onClick={() => addLayer(lIdx)}
+                                                style={{ width: '100%', marginTop: 8, padding: '4px', fontSize: '0.85rem' }}
+                                            >
+                                                ➕ {t('dmPanel.layers.addLayer')}
+                                            </button>
+                                        </div>
+                                    )}
+                                </div>
                             ))}
                         </div>
                     </section>

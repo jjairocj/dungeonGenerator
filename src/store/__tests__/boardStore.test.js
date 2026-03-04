@@ -1,21 +1,42 @@
 /**
  * EPIC 1 MVP — Unit Tests
- * Tests for boardStore covering G-01 through G-07
+ * Tests for boardStore covering G-01 through G-07, and G-09/G-11
  */
 import { describe, it, expect, beforeEach } from 'vitest';
 import { useBoardStore, PAINT_MODES, DEFAULT_COLS, DEFAULT_ROWS, MIN_COLS, MAX_COLS, MIN_ROWS, MAX_ROWS, HISTORY_LIMIT } from '../boardStore';
 
+// Helper to get active tiles map
+const getTiles = () => {
+    const s = useBoardStore.getState();
+    return s.levels[s.activeLevelIndex].layers[s.activeLayerIndex].tiles;
+};
 
 // Reset store before each test
 beforeEach(() => {
     useBoardStore.setState({
         gridCols: DEFAULT_COLS,
         gridRows: DEFAULT_ROWS,
-        tiles: Object.fromEntries(
-            Array.from({ length: DEFAULT_ROWS }, (_, r) =>
-                Array.from({ length: DEFAULT_COLS }, (_, c) => [`${c},${r}`, 'grass'])
-            ).flat()
-        ),
+        levels: [
+            {
+                id: 'level-test-0',
+                name: 'Floor 1',
+                layers: [
+                    {
+                        id: 'layer-test-0',
+                        name: 'Base Layer',
+                        visible: true,
+                        locked: false,
+                        tiles: Object.fromEntries(
+                            Array.from({ length: DEFAULT_ROWS }, (_, r) =>
+                                Array.from({ length: DEFAULT_COLS }, (_, c) => [`${c},${r}`, 'grass'])
+                            ).flat()
+                        )
+                    }
+                ]
+            }
+        ],
+        activeLevelIndex: 0,
+        activeLayerIndex: 0,
         selectedTile: 'grass',
         paintMode: PAINT_MODES.BRUSH,
         showGrid: true,
@@ -41,7 +62,7 @@ describe('G-01: Configurable Map Size', () => {
 
     it('setGridSize reinitializes tiles to match new dimensions', () => {
         useBoardStore.getState().setGridSize(10, 10);
-        const { tiles } = useBoardStore.getState();
+        const tiles = getTiles();
         // Should have exactly 10×10 = 100 tiles
         expect(Object.keys(tiles).length).toBe(100);
         expect(tiles['0,0']).toBe('grass');
@@ -106,7 +127,7 @@ describe('G-04: Brush Painting', () => {
     it('placeTile in brush mode sets the tile to selectedTile', () => {
         useBoardStore.setState({ selectedTile: 'water', paintMode: PAINT_MODES.BRUSH });
         useBoardStore.getState().placeTile(0, 0);
-        expect(useBoardStore.getState().tiles['0,0']).toBe('water');
+        expect(getTiles()['0,0']).toBe('water');
     });
 
     it('placeTile pushes to history before making change', () => {
@@ -114,8 +135,8 @@ describe('G-04: Brush Painting', () => {
         useBoardStore.getState().placeTile(2, 3);
         const { history } = useBoardStore.getState();
         expect(history.length).toBeGreaterThan(0);
-        // Last history snapshot should have had grass at 2,3
-        expect(history[history.length - 1]['2,3']).toBe('grass');
+        // Last history snapshot should have had grass at 2,3 in the active layer
+        expect(history[history.length - 1][0].layers[0].tiles['2,3']).toBe('grass');
     });
 
     it('placeTile does not push history if tile type does not change', () => {
@@ -128,7 +149,7 @@ describe('G-04: Brush Painting', () => {
         useBoardStore.setState({ selectedTile: 'water', paintMode: PAINT_MODES.FILL });
         useBoardStore.getState().placeTile(0, 0);
         // Tile should remain unchanged since placeTile does nothing in FILL mode
-        expect(useBoardStore.getState().tiles['0,0']).toBe('grass');
+        expect(getTiles()['0,0']).toBe('grass');
     });
 });
 
@@ -137,7 +158,7 @@ describe('G-05: Flood Fill', () => {
     it('floodFillAt fills an entire all-grass map with water', () => {
         useBoardStore.setState({ selectedTile: 'water' });
         useBoardStore.getState().floodFillAt(0, 0);
-        const { tiles, gridCols, gridRows } = useBoardStore.getState();
+        const tiles = getTiles();
         const allWater = Object.values(tiles).every((t) => t === 'water');
         expect(allWater).toBe(true);
     });
@@ -146,16 +167,21 @@ describe('G-05: Flood Fill', () => {
         // Paint a wall of stone that divides the map
         const cols = DEFAULT_COLS;
         const rows = DEFAULT_ROWS;
-        const stoneTiles = {};
-        for (let r = 0; r < rows; r++) {
-            stoneTiles[`${Math.floor(cols / 2)},${r}`] = 'stone';
-        }
-        useBoardStore.setState((s) => ({ tiles: { ...s.tiles, ...stoneTiles } }));
+
+        // Manual override for testing
+        useBoardStore.setState((s) => {
+            const newLevels = JSON.parse(JSON.stringify(s.levels));
+            const activeTiles = newLevels[s.activeLevelIndex].layers[s.activeLayerIndex].tiles;
+            for (let r = 0; r < rows; r++) {
+                activeTiles[`${Math.floor(cols / 2)},${r}`] = 'stone';
+            }
+            return { levels: newLevels };
+        });
 
         useBoardStore.setState({ selectedTile: 'water' });
         useBoardStore.getState().floodFillAt(0, 0); // left side only
 
-        const { tiles } = useBoardStore.getState();
+        const tiles = getTiles();
         // Left side should be water
         expect(tiles['0,0']).toBe('water');
         // Right side should still be grass
@@ -184,12 +210,12 @@ describe('G-06: Eraser Mode', () => {
         // First paint a water tile
         useBoardStore.setState({ selectedTile: 'water', paintMode: PAINT_MODES.BRUSH });
         useBoardStore.getState().placeTile(3, 4);
-        expect(useBoardStore.getState().tiles['3,4']).toBe('water');
+        expect(getTiles()['3,4']).toBe('water');
 
         // Now switch to eraser
         useBoardStore.setState({ paintMode: PAINT_MODES.ERASER });
         useBoardStore.getState().placeTile(3, 4);
-        expect(useBoardStore.getState().tiles['3,4']).toBe('grass');
+        expect(getTiles()['3,4']).toBe('grass');
     });
 
     it('eraser does nothing if tile is already grass', () => {
@@ -205,19 +231,19 @@ describe('G-07: Undo/Redo History', () => {
     it('undo reverts the last tile placement', () => {
         useBoardStore.setState({ selectedTile: 'stone', paintMode: PAINT_MODES.BRUSH });
         useBoardStore.getState().placeTile(0, 0);
-        expect(useBoardStore.getState().tiles['0,0']).toBe('stone');
+        expect(getTiles()['0,0']).toBe('stone');
 
         useBoardStore.getState().undo();
-        expect(useBoardStore.getState().tiles['0,0']).toBe('grass');
+        expect(getTiles()['0,0']).toBe('grass');
     });
 
     it('redo reapplies an undone action', () => {
         useBoardStore.setState({ selectedTile: 'lava', paintMode: PAINT_MODES.BRUSH });
         useBoardStore.getState().placeTile(5, 5);
         useBoardStore.getState().undo();
-        expect(useBoardStore.getState().tiles['5,5']).toBe('grass');
+        expect(getTiles()['5,5']).toBe('grass');
         useBoardStore.getState().redo();
-        expect(useBoardStore.getState().tiles['5,5']).toBe('lava');
+        expect(getTiles()['5,5']).toBe('lava');
     });
 
     it('new action after undo clears the future (redo stack)', () => {
@@ -231,21 +257,21 @@ describe('G-07: Undo/Redo History', () => {
     });
 
     it('undo does nothing if history is empty', () => {
-        const tilesBefore = { ...useBoardStore.getState().tiles };
+        const tilesBefore = { ...getTiles() };
         useBoardStore.getState().undo();
-        expect(useBoardStore.getState().tiles).toEqual(tilesBefore);
+        expect(getTiles()).toEqual(tilesBefore);
     });
 
     it('redo does nothing if future stack is empty', () => {
         useBoardStore.setState({ selectedTile: 'stone', paintMode: PAINT_MODES.BRUSH });
         useBoardStore.getState().placeTile(0, 0);
-        const tilesBefore = { ...useBoardStore.getState().tiles };
+        const tilesBefore = { ...getTiles() };
         useBoardStore.getState().redo(); // nothing in future
-        expect(useBoardStore.getState().tiles).toEqual(tilesBefore);
+        expect(getTiles()).toEqual(tilesBefore);
     });
 
     it(`history is capped at ${HISTORY_LIMIT} entries`, () => {
-        const tileKeys = Object.keys(useBoardStore.getState().tiles);
+        const tileKeys = Object.keys(getTiles());
         for (let i = 0; i < HISTORY_LIMIT + 10; i++) {
             const key = tileKeys[i % tileKeys.length];
             const [col, row] = key.split(',').map(Number);
@@ -260,15 +286,15 @@ describe('G-07: Undo/Redo History', () => {
     it('undo/redo works with flood fill too', () => {
         useBoardStore.setState({ selectedTile: 'water' });
         useBoardStore.getState().floodFillAt(0, 0);
-        const allWater = Object.values(useBoardStore.getState().tiles).every((t) => t === 'water');
+        const allWater = Object.values(getTiles()).every((t) => t === 'water');
         expect(allWater).toBe(true);
 
         useBoardStore.getState().undo();
-        const allGrass = Object.values(useBoardStore.getState().tiles).every((t) => t === 'grass');
+        const allGrass = Object.values(getTiles()).every((t) => t === 'grass');
         expect(allGrass).toBe(true);
 
         useBoardStore.getState().redo();
-        const allWaterAgain = Object.values(useBoardStore.getState().tiles).every((t) => t === 'water');
+        const allWaterAgain = Object.values(getTiles()).every((t) => t === 'water');
         expect(allWaterAgain).toBe(true);
     });
 
@@ -279,11 +305,11 @@ describe('G-07: Undo/Redo History', () => {
         useBoardStore.setState({ selectedTile: 'lava' }); useBoardStore.getState().placeTile(2, 0);
 
         useBoardStore.getState().undo(); // undo lava
-        expect(useBoardStore.getState().tiles['2,0']).toBe('grass');
+        expect(getTiles()['2,0']).toBe('grass');
         useBoardStore.getState().undo(); // undo water
-        expect(useBoardStore.getState().tiles['1,0']).toBe('grass');
+        expect(getTiles()['1,0']).toBe('grass');
         useBoardStore.getState().undo(); // undo stone
-        expect(useBoardStore.getState().tiles['0,0']).toBe('grass');
+        expect(getTiles()['0,0']).toBe('grass');
     });
 });
 
@@ -298,5 +324,30 @@ describe('Paint mode (general)', () => {
 
         useBoardStore.getState().setPaintMode(PAINT_MODES.BRUSH);
         expect(useBoardStore.getState().paintMode).toBe(PAINT_MODES.BRUSH);
+    });
+});
+
+// ─── G-09, G-11: Layer & Level Architecture ──────────────────────────────────
+describe('G-09 / G-11: Layers and Levels', () => {
+    it('addLevel creates a new floor', () => {
+        useBoardStore.getState().addLevel();
+        const { levels, activeLevelIndex } = useBoardStore.getState();
+        expect(levels.length).toBe(2);
+        expect(activeLevelIndex).toBe(1);
+    });
+
+    it('addLayer creates a new layer in current level', () => {
+        useBoardStore.getState().addLayer(0);
+        const { levels, activeLayerIndex } = useBoardStore.getState();
+        expect(levels[0].layers.length).toBe(2);
+        expect(activeLayerIndex).toBe(1);
+    });
+
+    it('toggleLayerVisibility and toggleLayerLock work correctly', () => {
+        useBoardStore.getState().toggleLayerVisibility(0, 0);
+        expect(useBoardStore.getState().levels[0].layers[0].visible).toBe(false);
+
+        useBoardStore.getState().toggleLayerLock(0, 0);
+        expect(useBoardStore.getState().levels[0].layers[0].locked).toBe(true);
     });
 });
