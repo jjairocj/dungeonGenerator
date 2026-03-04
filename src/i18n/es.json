@@ -1,0 +1,116 @@
+{
+    "tiles": {
+        "grass": "Hierba",
+        "dirt": "Tierra",
+        "stone": "Piedra",
+        "water": "Agua",
+        "sand": "Arena",
+        "lava": "Lava",
+        "snow": "Nieve",
+        "forest": "Bosque",
+        "dungeon": "Mazmorra",
+        "wall": "Muro"
+    },
+    "biomes": {
+        "plains": "Llanuras",
+        "forest": "Bosque",
+        "water": "Agua",
+        "dungeon": "Mazmorra",
+        "lava": "Lava",
+        "snow": "Nieve"
+    },
+    "common": {
+        "appName": "DungeonGenerator",
+        "loading": "Cargando..."
+    },
+    "login": {
+        "subtitle": "Accede a tu reino",
+        "email": "Correo electrónico",
+        "password": "Contraseña",
+        "emailPlaceholder": "dm@tumundo.com",
+        "submit": "Entrar al Dungeon",
+        "submitting": "Iniciando sesión...",
+        "noAccount": "¿Nuevo aventurero?",
+        "createAccount": "Crear una cuenta",
+        "continueGuest": "⚡ Continuar como invitado (sin guardar)",
+        "errorFallback": "Credenciales inválidas"
+    },
+    "register": {
+        "subtitle": "Comienza tu aventura",
+        "username": "Nombre de usuario",
+        "usernamePlaceholder": "MaestroDeDungeons42",
+        "email": "Correo electrónico",
+        "emailPlaceholder": "dm@tumundo.com",
+        "password": "Contraseña",
+        "confirmPassword": "Confirmar contraseña",
+        "passwordPlaceholder": "••••••••",
+        "submit": "Crear Cuenta",
+        "submitting": "Creando cuenta...",
+        "hasAccount": "¿Ya tienes una cuenta?",
+        "signIn": "Iniciar sesión",
+        "passwordMismatch": "Las contraseñas no coinciden",
+        "errorFallback": "Error al registrar"
+    },
+    "dashboard": {
+        "myMaps": "Mis Mapas",
+        "logout": "Cerrar sesión",
+        "newMap": "+ Nuevo Mapa",
+        "creating": "Creando...",
+        "loadingMaps": "Cargando tus mapas...",
+        "noMaps": "Aún no tienes mapas.",
+        "noMapsHint": "¡Crea tu primer mapa para comenzar tu aventura!",
+        "createFirstMap": "+ Crear Primer Mapa"
+    },
+    "editor": {
+        "backToDashboard": "← Dashboard",
+        "loadingBoard": "Cargando tablero..."
+    },
+    "dmPanel": {
+        "title": "Consola DM",
+        "subtitle": "Motor de Tiles D&D",
+        "tabs": {
+            "tiles": "🗺️ Tiles",
+            "biomes": "🌍 Biomas",
+            "effects": "✨ Efectos",
+            "audio": "🔊 Audio"
+        },
+        "tiles": {
+            "title": "Paleta de Tiles",
+            "hint": "Selecciona y pinta en el tablero"
+        },
+        "biomes": {
+            "title": "Relleno de Bioma",
+            "hint": "Rellena todo el tablero con tiles del bioma"
+        },
+        "effects": {
+            "title": "Efectos Dinámicos",
+            "clouds": "☁️ Nubes",
+            "wind": "💨 Viento",
+            "rain": "🌧️ Lluvia",
+            "fog": "🌫️ Niebla",
+            "windIntensity": "💨 Intensidad del Viento",
+            "cloudSpeed": "☁️ Velocidad de Nubes",
+            "fogDensity": "🌫️ Densidad de Niebla",
+            "rainIntensity": "🌧️ Intensidad de Lluvia",
+            "timeOfDay": "🌅 Hora del Día",
+            "night": "🌙 Noche",
+            "dawn": "🌅 Amanecer",
+            "day": "☀️ Día",
+            "dusk": "🌇 Atardecer"
+        },
+        "audio": {
+            "title": "Audio Ambiental",
+            "hint": "El audio se reproduce según el bioma actual",
+            "enable": "🔊 Activar Audio",
+            "volume": "🔉 Volumen",
+            "playing": "Reproduciendo: {{biome}} ambiental",
+            "disabled": "Audio desactivado",
+            "comingSoon": "Integración completa con Howler.js próximamente en v1.0 (biomas, crossfade, loops)."
+        },
+        "status": {
+            "mode": "Modo",
+            "biome": "Bioma",
+            "tile": "Tile"
+        }
+    }
+}

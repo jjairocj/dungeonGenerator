@@ -1,5 +1,8 @@
 import { useState } from 'react';
 import { useBoardStore, BIOMES, TILE_TYPES } from '../store/boardStore';
+import { useTranslation } from 'react-i18next';
+import LanguageSwitcher from './LanguageSwitcher';
+import '../styles/dmPanel.css';
 
 export default function DMPanel() {
     const rendererMode = useBoardStore((s) => s.rendererMode);
@@ -14,6 +17,22 @@ export default function DMPanel() {
     const setAudio = useBoardStore((s) => s.setAudio);
 
     const [activeSection, setActiveSection] = useState('tiles');
+    const { t } = useTranslation();
+
+    const tabs = [
+        { id: 'tiles', label: t('dmPanel.tabs.tiles') },
+        { id: 'biomes', label: t('dmPanel.tabs.biomes') },
+        { id: 'effects', label: t('dmPanel.tabs.effects') },
+        { id: 'audio', label: t('dmPanel.tabs.audio') },
+    ];
+
+    const dayTimeLabel = () => {
+        const v = effects.dayTime;
+        if (v < 0.2) return t('dmPanel.effects.night');
+        if (v < 0.5) return t('dmPanel.effects.dawn');
+        if (v < 0.8) return t('dmPanel.effects.day');
+        return t('dmPanel.effects.dusk');
+    };
 
     return (
         <aside className="dm-panel">
@@ -22,8 +41,8 @@ export default function DMPanel() {
                 <div className="dm-panel__logo">
                     <span className="dm-panel__logo-icon">⚔️</span>
                     <div>
-                        <h1 className="dm-panel__title">DM Console</h1>
-                        <p className="dm-panel__subtitle">D&D Tile Engine POC</p>
+                        <h1 className="dm-panel__title">{t('dmPanel.title')}</h1>
+                        <p className="dm-panel__subtitle">{t('dmPanel.subtitle')}</p>
                     </div>
                 </div>
 
@@ -46,13 +65,13 @@ export default function DMPanel() {
 
             {/* Nav tabs */}
             <nav className="dm-panel__nav">
-                {['tiles', 'biomes', 'effects', 'audio'].map((s) => (
+                {tabs.map(({ id, label }) => (
                     <button
-                        key={s}
-                        className={`dm-nav-btn ${activeSection === s ? 'active' : ''}`}
-                        onClick={() => setActiveSection(s)}
+                        key={id}
+                        className={`dm-nav-btn ${activeSection === id ? 'active' : ''}`}
+                        onClick={() => setActiveSection(id)}
                     >
-                        {{ tiles: '🗺️ Tiles', biomes: '🌍 Biomes', effects: '✨ Effects', audio: '🔊 Audio' }[s]}
+                        {label}
                     </button>
                 ))}
             </nav>
@@ -63,8 +82,8 @@ export default function DMPanel() {
                 {/* --- TILE PALETTE --- */}
                 {activeSection === 'tiles' && (
                     <section className="dm-section">
-                        <h2 className="dm-section__title">Tile Palette</h2>
-                        <p className="dm-section__hint">Click to select, then paint on board</p>
+                        <h2 className="dm-section__title">{t('dmPanel.tiles.title')}</h2>
+                        <p className="dm-section__hint">{t('dmPanel.tiles.hint')}</p>
                         <div className="tile-grid">
                             {TILE_TYPES.map((tile) => (
                                 <button
@@ -72,10 +91,10 @@ export default function DMPanel() {
                                     className={`tile-btn ${selectedTile === tile.id ? 'active' : ''}`}
                                     onClick={() => setSelectedTile(tile.id)}
                                     style={{ '--tile-color': tile.color }}
-                                    title={tile.label}
+                                    title={t(`tiles.${tile.id}`)}
                                 >
                                     <span className="tile-btn__icon">{tile.icon}</span>
-                                    <span className="tile-btn__label">{tile.label}</span>
+                                    <span className="tile-btn__label">{t(`tiles.${tile.id}`)}</span>
                                 </button>
                             ))}
                         </div>
@@ -85,8 +104,8 @@ export default function DMPanel() {
                 {/* --- BIOMES --- */}
                 {activeSection === 'biomes' && (
                     <section className="dm-section">
-                        <h2 className="dm-section__title">Biome Fill</h2>
-                        <p className="dm-section__hint">Flood-fills entire board with biome tiles</p>
+                        <h2 className="dm-section__title">{t('dmPanel.biomes.title')}</h2>
+                        <p className="dm-section__hint">{t('dmPanel.biomes.hint')}</p>
                         <div className="biome-grid">
                             {Object.entries(BIOMES).map(([id, biome]) => (
                                 <button
@@ -96,7 +115,7 @@ export default function DMPanel() {
                                     onClick={() => fillBiome(id)}
                                 >
                                     <span className="biome-btn__icon">{biome.icon}</span>
-                                    <span className="biome-btn__label">{biome.label}</span>
+                                    <span className="biome-btn__label">{t(`biomes.${id}`)}</span>
                                 </button>
                             ))}
                         </div>
@@ -106,114 +125,51 @@ export default function DMPanel() {
                 {/* --- EFFECTS --- */}
                 {activeSection === 'effects' && (
                     <section className="dm-section">
-                        <h2 className="dm-section__title">Dynamic Effects</h2>
+                        <h2 className="dm-section__title">{t('dmPanel.effects.title')}</h2>
 
-                        <div className="effect-row">
-                            <label className="effect-row__label">
-                                <span>☁️ Clouds</span>
+                        {[
+                            { key: 'clouds', label: t('dmPanel.effects.clouds') },
+                            { key: 'wind', label: t('dmPanel.effects.wind') },
+                            { key: 'rain', label: t('dmPanel.effects.rain') },
+                            { key: 'fog', label: t('dmPanel.effects.fog') },
+                        ].map(({ key, label }) => (
+                            <div key={key} className="effect-row">
+                                <label className="effect-row__label">
+                                    <span>{label}</span>
+                                    <input
+                                        type="checkbox"
+                                        className="toggle"
+                                        checked={effects[key]}
+                                        onChange={(e) => setEffect(key, e.target.checked)}
+                                    />
+                                </label>
+                            </div>
+                        ))}
+
+                        {[
+                            { key: 'windIntensity', label: t('dmPanel.effects.windIntensity'), min: 0, max: 1, step: 0.05 },
+                            { key: 'cloudSpeed', label: t('dmPanel.effects.cloudSpeed'), min: 0.05, max: 1, step: 0.05 },
+                            { key: 'fogDensity', label: t('dmPanel.effects.fogDensity'), min: 0, max: 1, step: 0.05 },
+                            { key: 'rainIntensity', label: t('dmPanel.effects.rainIntensity'), min: 0, max: 1, step: 0.05 },
+                        ].map(({ key, label, min, max, step }) => (
+                            <div key={key} className="slider-group">
+                                <label className="slider-label">
+                                    <span>{label}</span>
+                                    <span className="slider-value">{Math.round(effects[key] * 100)}%</span>
+                                </label>
                                 <input
-                                    type="checkbox"
-                                    className="toggle"
-                                    checked={effects.clouds}
-                                    onChange={(e) => setEffect('clouds', e.target.checked)}
+                                    type="range" min={min} max={max} step={step}
+                                    value={effects[key]}
+                                    className="slider"
+                                    onChange={(e) => setEffect(key, parseFloat(e.target.value))}
                                 />
-                            </label>
-                        </div>
-
-                        <div className="effect-row">
-                            <label className="effect-row__label">
-                                <span>💨 Wind</span>
-                                <input
-                                    type="checkbox"
-                                    className="toggle"
-                                    checked={effects.wind}
-                                    onChange={(e) => setEffect('wind', e.target.checked)}
-                                />
-                            </label>
-                        </div>
-
-                        <div className="effect-row">
-                            <label className="effect-row__label">
-                                <span>🌧️ Rain</span>
-                                <input
-                                    type="checkbox"
-                                    className="toggle"
-                                    checked={effects.rain}
-                                    onChange={(e) => setEffect('rain', e.target.checked)}
-                                />
-                            </label>
-                        </div>
-
-                        <div className="effect-row">
-                            <label className="effect-row__label">
-                                <span>🌫️ Fog</span>
-                                <input
-                                    type="checkbox"
-                                    className="toggle"
-                                    checked={effects.fog}
-                                    onChange={(e) => setEffect('fog', e.target.checked)}
-                                />
-                            </label>
-                        </div>
+                            </div>
+                        ))}
 
                         <div className="slider-group">
                             <label className="slider-label">
-                                <span>💨 Wind Intensity</span>
-                                <span className="slider-value">{Math.round(effects.windIntensity * 100)}%</span>
-                            </label>
-                            <input
-                                type="range" min="0" max="1" step="0.05"
-                                value={effects.windIntensity}
-                                className="slider"
-                                onChange={(e) => setEffect('windIntensity', parseFloat(e.target.value))}
-                            />
-                        </div>
-
-                        <div className="slider-group">
-                            <label className="slider-label">
-                                <span>☁️ Cloud Speed</span>
-                                <span className="slider-value">{Math.round(effects.cloudSpeed * 100)}%</span>
-                            </label>
-                            <input
-                                type="range" min="0.05" max="1" step="0.05"
-                                value={effects.cloudSpeed}
-                                className="slider"
-                                onChange={(e) => setEffect('cloudSpeed', parseFloat(e.target.value))}
-                            />
-                        </div>
-
-                        <div className="slider-group">
-                            <label className="slider-label">
-                                <span>🌫️ Fog Density</span>
-                                <span className="slider-value">{Math.round(effects.fogDensity * 100)}%</span>
-                            </label>
-                            <input
-                                type="range" min="0" max="1" step="0.05"
-                                value={effects.fogDensity}
-                                className="slider"
-                                onChange={(e) => setEffect('fogDensity', parseFloat(e.target.value))}
-                            />
-                        </div>
-
-                        <div className="slider-group">
-                            <label className="slider-label">
-                                <span>🌧️ Rain Intensity</span>
-                                <span className="slider-value">{Math.round(effects.rainIntensity * 100)}%</span>
-                            </label>
-                            <input
-                                type="range" min="0" max="1" step="0.05"
-                                value={effects.rainIntensity}
-                                className="slider"
-                                onChange={(e) => setEffect('rainIntensity', parseFloat(e.target.value))}
-                            />
-                        </div>
-
-                        <div className="slider-group">
-                            <label className="slider-label">
-                                <span>🌅 Time of Day</span>
-                                <span className="slider-value">
-                                    {effects.dayTime < 0.2 ? '🌙 Night' : effects.dayTime < 0.5 ? '🌅 Dawn' : effects.dayTime < 0.8 ? '☀️ Day' : '🌇 Dusk'}
-                                </span>
+                                <span>{t('dmPanel.effects.timeOfDay')}</span>
+                                <span className="slider-value">{dayTimeLabel()}</span>
                             </label>
                             <input
                                 type="range" min="0" max="1" step="0.01"
@@ -228,12 +184,12 @@ export default function DMPanel() {
                 {/* --- AUDIO --- */}
                 {activeSection === 'audio' && (
                     <section className="dm-section">
-                        <h2 className="dm-section__title">Ambient Audio</h2>
-                        <p className="dm-section__hint">Audio plays based on current biome</p>
+                        <h2 className="dm-section__title">{t('dmPanel.audio.title')}</h2>
+                        <p className="dm-section__hint">{t('dmPanel.audio.hint')}</p>
 
                         <div className="effect-row">
                             <label className="effect-row__label">
-                                <span>🔊 Enable Audio</span>
+                                <span>{t('dmPanel.audio.enable')}</span>
                                 <input
                                     type="checkbox"
                                     className="toggle"
@@ -245,7 +201,7 @@ export default function DMPanel() {
 
                         <div className="slider-group" style={{ marginTop: 16 }}>
                             <label className="slider-label">
-                                <span>🔉 Volume</span>
+                                <span>{t('dmPanel.audio.volume')}</span>
                                 <span className="slider-value">{Math.round(audio.volume * 100)}%</span>
                             </label>
                             <input
@@ -260,13 +216,13 @@ export default function DMPanel() {
                             <div className="audio-status__indicator" style={{ background: audio.enabled ? '#4ecca3' : '#555' }} />
                             <span>
                                 {audio.enabled
-                                    ? `Playing: ${BIOMES[currentBiome]?.label ?? 'None'} ambience`
-                                    : 'Audio disabled'}
+                                    ? t('dmPanel.audio.playing', { biome: t(`biomes.${currentBiome}`) })
+                                    : t('dmPanel.audio.disabled')}
                             </span>
                         </div>
 
                         <p className="dm-section__hint" style={{ marginTop: 16 }}>
-                            Full audio integration with Howler.js coming in v1.0 (biome soundscapes, crossfade, ambient loops).
+                            {t('dmPanel.audio.comingSoon')}
                         </p>
                     </section>
                 )}
@@ -276,8 +232,9 @@ export default function DMPanel() {
             <div className="dm-panel__footer">
                 <span className="status-dot" />
                 <span>
-                    Mode: <strong>{rendererMode.toUpperCase()}</strong> · Biome: <strong>{BIOMES[currentBiome]?.label}</strong> · Tile: <strong>{selectedTile}</strong>
+                    {t('dmPanel.status.mode')}: <strong>{rendererMode.toUpperCase()}</strong> · {t('dmPanel.status.biome')}: <strong>{t(`biomes.${currentBiome}`)}</strong> · {t('dmPanel.status.tile')}: <strong>{t(`tiles.${selectedTile}`)}</strong>
                 </span>
+                <LanguageSwitcher className="ml-auto" />
             </div>
         </aside>
     );

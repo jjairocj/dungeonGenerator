@@ -1,0 +1,116 @@
+{
+    "tiles": {
+        "grass": "Grass",
+        "dirt": "Dirt",
+        "stone": "Stone",
+        "water": "Water",
+        "sand": "Sand",
+        "lava": "Lava",
+        "snow": "Snow",
+        "forest": "Forest",
+        "dungeon": "Dungeon",
+        "wall": "Wall"
+    },
+    "biomes": {
+        "plains": "Plains",
+        "forest": "Forest",
+        "water": "Water",
+        "dungeon": "Dungeon",
+        "lava": "Lava",
+        "snow": "Snow"
+    },
+    "common": {
+        "appName": "DungeonGenerator",
+        "loading": "Loading..."
+    },
+    "login": {
+        "subtitle": "Sign in to your realm",
+        "email": "Email",
+        "password": "Password",
+        "emailPlaceholder": "dm@yourworld.com",
+        "submit": "Enter the Dungeon",
+        "submitting": "Signing in...",
+        "noAccount": "New adventurer?",
+        "createAccount": "Create an account",
+        "continueGuest": "⚡ Continue as guest (no save)",
+        "errorFallback": "Invalid credentials"
+    },
+    "register": {
+        "subtitle": "Begin your adventure",
+        "username": "Username",
+        "usernamePlaceholder": "DungeonMaster42",
+        "email": "Email",
+        "emailPlaceholder": "dm@yourworld.com",
+        "password": "Password",
+        "confirmPassword": "Confirm Password",
+        "passwordPlaceholder": "••••••••",
+        "submit": "Create Account",
+        "submitting": "Creating account...",
+        "hasAccount": "Already have an account?",
+        "signIn": "Sign in",
+        "passwordMismatch": "Passwords do not match",
+        "errorFallback": "Registration failed"
+    },
+    "dashboard": {
+        "myMaps": "My Maps",
+        "logout": "Logout",
+        "newMap": "+ New Map",
+        "creating": "Creating...",
+        "loadingMaps": "Loading your maps...",
+        "noMaps": "No maps yet.",
+        "noMapsHint": "Create your first map to begin your adventure!",
+        "createFirstMap": "+ Create First Map"
+    },
+    "editor": {
+        "backToDashboard": "← Dashboard",
+        "loadingBoard": "Loading board..."
+    },
+    "dmPanel": {
+        "title": "DM Console",
+        "subtitle": "D&D Tile Engine POC",
+        "tabs": {
+            "tiles": "🗺️ Tiles",
+            "biomes": "🌍 Biomes",
+            "effects": "✨ Effects",
+            "audio": "🔊 Audio"
+        },
+        "tiles": {
+            "title": "Tile Palette",
+            "hint": "Click to select, then paint on board"
+        },
+        "biomes": {
+            "title": "Biome Fill",
+            "hint": "Flood-fills entire board with biome tiles"
+        },
+        "effects": {
+            "title": "Dynamic Effects",
+            "clouds": "☁️ Clouds",
+            "wind": "💨 Wind",
+            "rain": "🌧️ Rain",
+            "fog": "🌫️ Fog",
+            "windIntensity": "💨 Wind Intensity",
+            "cloudSpeed": "☁️ Cloud Speed",
+            "fogDensity": "🌫️ Fog Density",
+            "rainIntensity": "🌧️ Rain Intensity",
+            "timeOfDay": "🌅 Time of Day",
+            "night": "🌙 Night",
+            "dawn": "🌅 Dawn",
+            "day": "☀️ Day",
+            "dusk": "🌇 Dusk"
+        },
+        "audio": {
+            "title": "Ambient Audio",
+            "hint": "Audio plays based on current biome",
+            "enable": "🔊 Enable Audio",
+            "volume": "🔉 Volume",
+            "playing": "Playing: {{biome}} ambience",
+            "disabled": "Audio disabled",
+            "comingSoon": "Full audio integration with Howler.js coming in v1.0 (biome soundscapes, crossfade, ambient loops)."
+        },
+        "status": {
+            "mode": "Mode",
+            "biome": "Biome",
+            "tile": "Tile"
+        }
+    }
+}
