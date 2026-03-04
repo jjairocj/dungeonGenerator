@@ -1,41 +1,58 @@
 import { lazy, Suspense } from 'react';
-import { useBoardStore } from './store/boardStore';
-import DMPanel from './components/DMPanel';
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { useAuthStore } from './store/authStore';
+import LoginPage from './pages/LoginPage';
+import RegisterPage from './pages/RegisterPage';
+import DashboardPage from './pages/DashboardPage';
+import EditorPage from './pages/EditorPage';
 
 const PixiBoard = lazy(() => import('./renderers/PixiBoard'));
-const ThreeBoard = lazy(() => import('./renderers/ThreeBoard'));
 
-function LoadingBoard() {
+function BoardLoading() {
   return (
     <div className="board-loading">
       <div className="board-loading__spinner" />
-      <p>Loading renderer...</p>
+      <p>Loading board...</p>
     </div>
   );
 }
 
+function ProtectedRoute({ children }) {
+  const token = useAuthStore((s) => s.token);
+  return token ? children : <Navigate to="/login" replace />;
+}
+
 export default function App() {
-  const rendererMode = useBoardStore((s) => s.rendererMode);
-
   return (
-    <div className="app-root">
-      {/* DM Panel (left side) */}
-      <DMPanel />
-
-      {/* Game Board (right side / TV display) */}
-      <main className="board-area">
-        <div className="board-area__header">
-          <span className="board-area__mode-badge">
-            {rendererMode === '2d' ? '⬜ PixiJS 2D' : '🎲 Three.js 3D'}
-          </span>
-          <span className="board-area__hint">Click &amp; drag to paint tiles</span>
-        </div>
-        <div className="board-area__canvas-wrap">
-          <Suspense fallback={<LoadingBoard />}>
-            {rendererMode === '2d' ? <PixiBoard /> : <ThreeBoard />}
-          </Suspense>
-        </div>
-      </main>
-    </div>
+    <BrowserRouter>
+      <Routes>
+        <Route path="/login" element={<LoginPage />} />
+        <Route path="/register" element={<RegisterPage />} />
+        <Route
+          path="/dashboard"
+          element={
+            <ProtectedRoute>
+              <DashboardPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/editor/:mapId?"
+          element={
+            <ProtectedRoute>
+              <EditorPage PixiBoard={PixiBoard} BoardLoading={BoardLoading} />
+            </ProtectedRoute>
+          }
+        />
+        {/* Guest mode: editor without auth */}
+        <Route
+          path="/editor-guest"
+          element={
+            <EditorPage PixiBoard={PixiBoard} BoardLoading={BoardLoading} />
+          }
+        />
+        <Route path="/" element={<Navigate to="/dashboard" replace />} />
+      </Routes>
+    </BrowserRouter>
   );
 }

@@ -12,12 +12,13 @@
   "dependencies": {
     "@pixi/filter-blur": "^7.4.3",
     "@pixi/filter-displacement": "^7.4.3",
+    "axios": "^1.13.6",
     "gsap": "^3.14.2",
     "howler": "^2.2.4",
     "pixi.js": "^8.16.0",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
-    "three": "^0.183.2",
+    "react-router-dom": "^7.13.1",
     "zustand": "^5.0.11"
   },
   "devDependencies": {
