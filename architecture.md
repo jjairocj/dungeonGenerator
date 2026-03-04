@@ -1,4 +1,5 @@
 # DNDTiles — Arquitectura de Sistema V1.0
+*Renderer: **solo PixiJS 2D top-down** — Three.js descartado (TV horizontal como mesa de juego)*
 *Stack self-hosted · Auth propia · Sin costos de BaaS*
 
 ---
@@ -19,9 +20,8 @@
 | Capa | Tech |
 |------|------|
 | Framework | React 18 + Vite |
-| Estado global | Zustand |
-| Renderer 2D | PixiJS 8 |
-| Renderer 3D | Three.js |
+| Estado global | Zustand | Ya en POC ✅ |
+| Renderer 2D | **PixiJS 8** (único renderer) | Top-down perfecto para TV mesa |
 | HTTP client | axios / fetch nativo |
 | Auth state | JWT en localStorage + Zustand |
 | Audio | Howler.js |
@@ -58,8 +58,8 @@
 │                                                                │
 │  ┌──────────────────┐           ┌──────────────────────────┐  │
 │  │   DM Panel Tab   │           │  Player View Tab (TV)    │  │
-│  │  React + Zustand │  shared   │  React + canvas only     │  │
-│  │  PixiJS / Three  │  state    │  FOW overlay             │  │
+│  │  - PixiJS Board  │  shared   │  React + canvas only     │  │
+│  │  (2D top-down)   │  state    │  FOW overlay             │  │
 │  └────────┬─────────┘           └──────────────────────────┘  │
 │           │ REST API (JWT)                                     │
 └───────────┼────────────────────────────────────────────────────┘
@@ -341,7 +341,7 @@ VITE_API_URL="http://localhost:3001"
 ## 12. Roadmap de Implementación
 
 ```
-Wave 0 (hecho ✅): POC PixiJS + Three.js + Zustand
+Wave 0 (hecho ✅): POC PixiJS 2D + Zustand (Three.js removido)
 Wave 1: Estructura monorepo + backend Express + Prisma + Neon
 Wave 2: Auth (register/login/JWT) + páginas Login/Register/Dashboard
 Wave 3: Cloud save (PUT /maps/:id) + load de mapas

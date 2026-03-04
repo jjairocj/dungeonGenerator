@@ -1,5 +1,7 @@
 # DNDTiles — User Epic
-*D&D Interactive Map Editor & Live Board for TV Display*
+*D&D Interactive Map Editor & Live Board para TV Display — **2D Top-Down (PixiJS)***
+
+> **Decisión de renderizado:** Solo 2D con PixiJS 8. La TV usada como mesa de juego horizontal hace que el top-down 2D sea la vista perfecta. El 3D isométrico no aportaría valor en este contexto.
 
 > **Visión**: Una aplicación web que permite al Dungeon Master diseñar, animar y mostrar mapas de D&D en una TV en tiempo real, con controles en una segunda pantalla/tab y efectos atmosféricos cinematográficos.
 
@@ -294,23 +296,9 @@
 
 ---
 
-## EPIC 13 — Renderer 3D (Three.js) 🎮
+## ~~EPIC 13 — Renderer 3D~~ ❌ Descartado
 
-### MVP (ya construido en POC)
-
-| ID | Historia de usuario |
-|----|---------------------|
-| R-01 | Como DM, quiero alternar entre vista 2D (top-down PixiJS) y vista 3D (Three.js perspectiva) con un toggle. |
-| R-02 | Como DM, quiero que el estado del mapa sea idéntico en ambos modos (mismos tiles, misma posición). |
-| R-03 | Como DM, quiero OrbitControls en 3D para rotar/hacer pan de la cámara. |
-
-### V2+
-
-| ID | Historia de usuario |
-|----|---------------------|
-| R-04 | Como DM, quiero tiles en 3D con materiales PBR (normal maps, roughness, metalness) para apariencia cinematográfica. |
-| R-05 | Como DM, quiero sombras dinámicas en 3D (token casting shadows sobre el terreno). |
-| R-06 | Como DM, quiero animaciones de cámara automáticas en 3D (slow orbit, dramatic reveal). |
+> **Motivo:** La TV usada horizontalmente como base de mesa hace que el top-down 2D sea la vista óptima. El isométrico/3D añadiría complejidad sin beneficio real para este caso de uso. **Solo PixiJS 2D.**
 
 ---
 
@@ -330,7 +318,7 @@ EPIC 8 — Audio básico (S-01 a S-03)
 EPIC 9 — DM Notes (D-01 a D-02)
 EPIC 10 — Save/Load + PNG export (E-01 a E-02)
 EPIC 11 — Player View / TV Mode (V-01 a V-03)
-EPIC 13 — 2D/3D toggle (R-01 a R-03)
+~~EPIC 13 — 3D renderer~~ (descartado)
 ```
 
 ### 🟡 V1.5 — Post-lanzamiento rápido
@@ -355,7 +343,7 @@ EPIC 8 — Audio mixer + custom import (S-04 a S-08)
 EPIC 9 — NPC DB + campaign timeline (D-03 a D-06)
 EPIC 10 — Foundry + URL share + GIF export (E-04 a E-08)
 EPIC 12 — Multiplayer full (M-01 a M-05)
-EPIC 13 — PBR 3D + shadows (R-04 a R-06)
+
 ```
 
 ---
