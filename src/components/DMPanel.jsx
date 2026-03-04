@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useBoardStore, BIOMES, TILE_TYPES } from '../store/boardStore';
+import { useBoardStore, BIOMES, TILE_TYPES, PAINT_MODES, MIN_COLS, MAX_COLS, MIN_ROWS, MAX_ROWS } from '../store/boardStore';
 import { useTranslation } from 'react-i18next';
 import LanguageSwitcher from './LanguageSwitcher';
 import '../styles/dmPanel.css';
@@ -16,7 +16,27 @@ export default function DMPanel() {
     const audio = useBoardStore((s) => s.audio);
     const setAudio = useBoardStore((s) => s.setAudio);
 
+    // G-01: Grid size
+    const gridCols = useBoardStore((s) => s.gridCols);
+    const gridRows = useBoardStore((s) => s.gridRows);
+    const setGridSize = useBoardStore((s) => s.setGridSize);
+
+    // G-02: Grid overlay toggle
+    const showGrid = useBoardStore((s) => s.showGrid);
+    const setShowGrid = useBoardStore((s) => s.setShowGrid);
+
+    // G-04/G-06: Paint mode
+    const paintMode = useBoardStore((s) => s.paintMode);
+    const setPaintMode = useBoardStore((s) => s.setPaintMode);
+
+    // G-07: Undo / Redo
+    const undo = useBoardStore((s) => s.undo);
+    const redo = useBoardStore((s) => s.redo);
+    const history = useBoardStore((s) => s.history);
+    const future = useBoardStore((s) => s.future);
+
     const [activeSection, setActiveSection] = useState('tiles');
+    const [sizeInput, setSizeInput] = useState({ cols: gridCols, rows: gridRows });
     const { t } = useTranslation();
 
     const tabs = [
@@ -33,6 +53,16 @@ export default function DMPanel() {
         if (v < 0.8) return t('dmPanel.effects.day');
         return t('dmPanel.effects.dusk');
     };
+
+    const applyGridSize = () => {
+        setGridSize(sizeInput.cols, sizeInput.rows);
+    };
+
+    const paintModes = [
+        { id: PAINT_MODES.BRUSH, icon: '🖌️', label: t('dmPanel.tools.brush') },
+        { id: PAINT_MODES.ERASER, icon: '🗑️', label: t('dmPanel.tools.eraser') },
+        { id: PAINT_MODES.FILL, icon: '🪣', label: t('dmPanel.tools.fill') },
+    ];
 
     return (
         <aside className="dm-panel">
@@ -54,11 +84,91 @@ export default function DMPanel() {
                     >
                         <span>⬜</span> 2D PixiJS
                     </button>
+                </div>
+            </div>
+
+            {/* ── Toolbar: Paint mode + Undo/Redo + Grid toggle ── */}
+            <div className="dm-toolbar">
+                {/* Paint modes (G-04/G-06) */}
+                <div className="dm-toolbar__group">
+                    {paintModes.map(({ id, icon, label }) => (
+                        <button
+                            key={id}
+                            id={`paint-mode-${id}`}
+                            className={`tool-btn ${paintMode === id ? 'active' : ''}`}
+                            onClick={() => setPaintMode(id)}
+                            title={label}
+                        >
+                            {icon}
+                        </button>
+                    ))}
+                </div>
+
+                {/* Undo / Redo (G-07) */}
+                <div className="dm-toolbar__group">
                     <button
-                        className={`renderer-btn ${rendererMode === '3d' ? 'active' : ''}`}
-                        onClick={() => setRendererMode('3d')}
+                        id="btn-undo"
+                        className="tool-btn"
+                        onClick={undo}
+                        disabled={history.length === 0}
+                        title={t('dmPanel.tools.undo') + ' (Ctrl+Z)'}
                     >
-                        <span>🎲</span> 3D Three.js
+                        ↩️
+                    </button>
+                    <button
+                        id="btn-redo"
+                        className="tool-btn"
+                        onClick={redo}
+                        disabled={future.length === 0}
+                        title={t('dmPanel.tools.redo') + ' (Ctrl+Y)'}
+                    >
+                        ↪️
+                    </button>
+                </div>
+
+                {/* Grid overlay toggle (G-02) */}
+                <div className="dm-toolbar__group">
+                    <button
+                        id="btn-toggle-grid"
+                        className={`tool-btn ${showGrid ? 'active' : ''}`}
+                        onClick={() => setShowGrid(!showGrid)}
+                        title={t('dmPanel.tools.toggleGrid')}
+                    >
+                        ⊞
+                    </button>
+                </div>
+            </div>
+
+            {/* ── Grid Size (G-01) ── */}
+            <div className="dm-grid-size">
+                <span className="dm-grid-size__label">⊞ {gridCols}×{gridRows}</span>
+                <div className="dm-grid-size__inputs">
+                    <input
+                        id="grid-cols-input"
+                        type="number"
+                        min={MIN_COLS} max={MAX_COLS}
+                        value={sizeInput.cols}
+                        onChange={(e) => setSizeInput(s => ({ ...s, cols: parseInt(e.target.value) || s.cols }))}
+                        className="size-input"
+                        title="Columns"
+                    />
+                    <span>×</span>
+                    <input
+                        id="grid-rows-input"
+                        type="number"
+                        min={MIN_ROWS} max={MAX_ROWS}
+                        value={sizeInput.rows}
+                        onChange={(e) => setSizeInput(s => ({ ...s, rows: parseInt(e.target.value) || s.rows }))}
+                        className="size-input"
+                        title="Rows"
+                    />
+                    <button
+                        id="btn-apply-grid-size"
+                        className="apply-btn"
+                        onClick={applyGridSize}
+                        title={t('dmPanel.tools.applyGridSize')}
+                    >
+                        ✓
                     </button>
                 </div>
             </div>
@@ -220,10 +330,6 @@ export default function DMPanel() {
                                     : t('dmPanel.audio.disabled')}
                             </span>
                         </div>
-
-                        <p className="dm-section__hint" style={{ marginTop: 16 }}>
-                            {t('dmPanel.audio.comingSoon')}
-                        </p>
                     </section>
                 )}
             </div>
@@ -232,7 +338,10 @@ export default function DMPanel() {
             <div className="dm-panel__footer">
                 <span className="status-dot" />
                 <span>
-                    {t('dmPanel.status.mode')}: <strong>{rendererMode.toUpperCase()}</strong> · {t('dmPanel.status.biome')}: <strong>{t(`biomes.${currentBiome}`)}</strong> · {t('dmPanel.status.tile')}: <strong>{t(`tiles.${selectedTile}`)}</strong>
+                    {paintMode === PAINT_MODES.ERASER ? '🗑️' : paintMode === PAINT_MODES.FILL ? '🪣' : '🖌️'}&nbsp;
+                    {t('dmPanel.status.biome')}: <strong>{t(`biomes.${currentBiome}`)}</strong>&nbsp;·&nbsp;
+                    {t('dmPanel.status.tile')}: <strong>{t(`tiles.${selectedTile}`)}</strong>&nbsp;·&nbsp;
+                    ⊞ {gridCols}×{gridRows}
                 </span>
                 <LanguageSwitcher className="ml-auto" />
             </div>

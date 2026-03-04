@@ -1,9 +1,11 @@
 # DNDTiles — User Epic
-*D&D Interactive Map Editor & Live Board para TV Display — **2D Top-Down (PixiJS)***
+*D&D Interactive Map Editor & Live Board para TV Display — **2D Top-Down (PixiJS v8)***
 
-> **Decisión de renderizado:** Solo 2D con PixiJS 8. La TV usada como mesa de juego horizontal hace que el top-down 2D sea la vista perfecta. El 3D isométrico no aportaría valor en este contexto.
+> **Decisión de renderizado:** Solo 2D con PixiJS 8 (WebGL/WebGPU). La TV usada como mesa de juego horizontal hace que el top-down 2D sea la vista perfecta. El 3D isométrico no aportaría valor en este contexto.
 
 > **Visión**: Una aplicación web que permite al Dungeon Master diseñar, animar y mostrar mapas de D&D en una TV en tiempo real, con controles en una segunda pantalla/tab y efectos atmosféricos cinematográficos.
+
+> **Estilo visual de referencia:** Pixel art top-down estilo *Zelda: Echoes of Wisdom* / *Hyper Light Drifter*. Paleta saturada, bordes limpios, agua con highlights geométricos, tiles procedurales con `Graphics` + texturas cacheadas con `generateTexture`.
 
 ---
 
@@ -12,14 +14,30 @@
 ```
 ┌─────────────────────────────────┐        ┌──────────────────────────────────┐
 │     DM Panel (control tab)      │  WS /  │     Game Board (TV screen)       │
-│  - Herramientas de mapa          │ store  │  - PixiJS 2D canvas (default)    │
-│  - Paleta de tiles/texturas      │──────▶ │  - Three.js 3D (opcional)        │
+│  - Herramientas de mapa          │ store  │  - PixiJS 2D canvas              │
+│  - Paleta de tiles/texturas      │──────▶ │  - Camera pan/zoom               │
 │  - Tokens & NPCs                 │        │  - Fog of War overlay            │
-│  - Efectos atmosféricos          │        │  - Shaders GLSL (agua/fuego)     │
+│  - Efectos atmosféricos          │        │  - Efectos de agua/fuego/lluvia  │
 │  - Generadores de nombres        │        │  - Partículas ambientales        │
 │  - Audio/ambiente                │        │  - Tokens de personajes          │
-│  - Exportar / importar           │        │                                  │
+│  - Exportar / importar           │        │  - AnimatedSprite entities       │
 └─────────────────────────────────┘        └──────────────────────────────────┘
+```
+
+### PixiJS Display Tree (arquitectura interna del renderer)
+
+```
+app.stage
+├── worldContainer        ← Tiles del mapa (waterCont + tileCont)
+│   ├── waterContainer    ← Tiles de agua (con DisplacementFilter)
+│   └── tileContainer     ← Todos los demás tiles (generateTexture + Sprite)
+├── entityContainer       ← Tokens, NPCs, criaturas (AnimatedSprite)
+├── fxContainer           ← Partículas atmosféricas (ParticleContainer)
+│   ├── rainContainer     ← Lluvia (ParticleContainer, fast)
+│   ├── emberContainer    ← Cenizas/lava (ParticleContainer, fast)
+│   └── cloudContainer    ← Nubes (Container con Sprites)
+├── fowContainer          ← Fog of War (Graphics o RenderTexture mask)
+└── uiContainer           ← HUD, etiquetas (no afectado por efectos globales)
 ```
 
 ---
@@ -32,11 +50,15 @@
 |----|---------------------|
 | G-01 | Como DM, quiero un canvas de mapa configurable (tamaño en tiles: 20×20 hasta 100×100) para adaptarlo a escenas pequeñas o grandes. |
 | G-02 | Como DM, quiero un grid cuadrado visible con opción de ocultarlo en la pantalla del jugador, para referencia de posicionamiento. |
-| G-03 | Como DM, quiero hacer zoom y pan en el mapa con scroll + arrastre, para trabajar en mapas grandes. |
+| G-03 | Como DM, quiero hacer zoom y pan en el mapa con scroll + arrastre (drag-to-pan con clamp de bordes del mundo), para trabajar en mapas grandes. |
 | G-04 | Como DM, quiero pintar tiles con click + drag (modo brocha), para crear terreno rápidamente. |
 | G-05 | Como DM, quiero usar flood fill (balde de pintura) en una región contigua, para rellenar áreas grandes en un clic. |
 | G-06 | Como DM, quiero un modo borrador para eliminar tiles del mapa. |
 | G-07 | Como DM, quiero deshacer/rehacer acciones (Ctrl+Z / Ctrl+Y) con historial de al menos 50 pasos. |
+
+> **Nota técnica G-02:** Para el grid overlay, usar `TilingSprite` con una textura PNG de celda de grid (16×16). Mucho más eficiente que dibujar líneas individuales. Toggle de alpha entre 0 (invisible) y 0.25 (debug visible).
+
+> **Nota técnica G-03:** Implementar la clase `Camera` con `adjustForWorldBounds()` (clamp a bordes del mundo) y `centerOnTarget()` con transición suave via `invlerp` (patrón extraído del portfolio de Endigo).
 
 ### V2+
 
@@ -63,16 +85,21 @@
 | T-04 | Como DM, quiero ver una miniatura del tile antes de pintarlo para saber qué estoy seleccionando. |
 | T-05 | Como DM, quiero tiles de transición automática entre biomas para que los bordes no se vean abruptos. |
 
+> **Nota técnica T-02:** Los tiles estáticos (stone, dirt, wall, sand, snow, dungeon) se precompilan como texturas con `app.renderer.generateTexture(graphics)` al iniciar, y se instancian como `Sprite(textureCache[type])`. Esto reduce los draw calls de miles a 1–2 por frame. Los tiles animados (grass, lava, forest, water) se redibujan selectivamente en el render loop.
+
+> **Nota técnica T-02 — Agua:** El tile de agua usa una base de `Graphics` (`0x2b9ec2`) con un `DisplacementFilter` aplicado al `waterContainer`, cargando `cloud.jpg` como mapa de ruido via `Assets.load('/cloud.jpg')`. El sprite se mueve `+1, -1` por frame para crear el efecto ondulante (técnica Red Stapler).
+
 ### V2+
 
 | ID | Historia de usuario |
 |----|---------------------|
-| T-06 | Como DM, quiero importar mis propias texturas/sprites (PNG/WEBP jusqu'à 512×512) para personalizar completamente el mapa. |
+| T-06 | Como DM, quiero importar mis propias texturas/sprites (PNG/WEBP ≤512×512) para personalizar completamente el mapa. |
 | T-07 | Como DM, quiero un sistema de texturas con variantes aleatorias por tile (3-4 variantes de hierba) para evitar patrones repetitivos. |
 | T-08 | Como DM, quiero tiles de objetos decorativos (árboles, rocas, columnas, fogatas, barriles) como capa separada. |
 | T-09 | Como DM, quiero tiles de muro con detección automática de borde (auto-tile Wall system) para que las paredes del dungeon se conecten correctamente. |
 | T-10 | Como DM, quiero un sistema de preset "Room Templates" (habitación del trono, calabozo, taberna) para construir dungeons rápidamente. |
-| T-11 | Como DM, quiero acceso a un catálogo de assets de comunidad (RPG Maker compatible) para enriquecer la biblioteca. |
+| T-11 | Como DM, quiero acceso a un catálogo de assets de comunidad (RPG Maker / Aseprite compatible) para enriquecer la biblioteca. |
+| T-12 | Como DM, quiero importar mapas PNG exportados de **Tiled Map Editor** como mundo completo, renderizado como un único Sprite de fondo. |
 
 ---
 
@@ -88,15 +115,19 @@
 | A-04 | Como DM, quiero un slider de intensidad de viento que afecte el movimiento de árboles/hierba en el canvas. |
 | A-05 | Como DM, quiero efectos de partículas de fuego/llamas posicionables en el mapa (antorchas, fogatas). |
 
+> **Nota técnica A-01:** La lluvia usa un `ParticleContainer` con 130–200 Sprites compartiendo una sola micro-textura (`rainTexture` generada con `generateTexture`). Object Pooling: los sprites nunca se destruyen, solo se reposicionan. Esto da 10-100× más velocidad que un `Container` normal con `Graphics` individuales.
+
+> **Nota técnica A-05:** Las llamas/ember usan el mismo patrón: `ParticleContainer` + `emberTexture` + Object Pool con propiedades `vx`, `vy`, `life` por objeto. La alpha decrece con `life` hasta que el ember se "respawna" en la posición de la fuente.
+
 ### V2+
 
 | ID | Historia de usuario |
 |----|---------------------|
-| A-06 | Como DM, quiero un ciclo de tiempo (amanecer/día/atardecer/noche) que cambie automáticamente el color ambiente del mapa. |
+| A-06 | Como DM, quiero un ciclo de tiempo (amanecer/día/atardecer/noche) que cambie automáticamente el color ambiente del mapa (via `ColorMatrixFilter`). |
 | A-07 | Como DM, quiero efectos de tormenta eléctrica (relámpagos procedurales + oscilación de luz). |
 | A-08 | Como DM, quiero nieve cayendo con acumulación visual en tiles (shader de whitening gradual). |
 | A-09 | Como DM, quiero cenizas/embers flotando en zonas de lava o post-batalla. |
-| A-10 | Como DM, quiero ondas de calor (heat haze shader) en zonas de desierto y lava. |
+| A-10 | Como DM, quiero ondas de calor (heat haze) en zonas de desierto y lava (via `DisplacementFilter` de baja intensidad). |
 | A-11 | Como DM, quiero efectos de agua submarina (caustics, bubbles) para mapas acuáticos. |
 | A-12 | Como DM, quiero transiciones de efecto cinematográfico entre escenas (fade to black, wipe, iris). |
 
@@ -112,14 +143,16 @@
 | L-02 | Como DM, quiero revelar tiles del mapa (click/brush) para ir mostrando el dungeon a medida que los jugadores exploran. |
 | L-03 | Como DM, quiero definir el radio de visión de cada token en tiles y que el FOW se revele automáticamente alrededor de él. |
 
+> **Nota técnica L-01:** Implementar el FOW como una `RenderTexture` de las dimensiones del mapa, pintada de negro. Al revelar tiles, borrar círculos con `BlendMode.ERASE` para crear "huecos" de visión suave.
+
 ### V2+
 
 | ID | Historia de usuario |
 |----|---------------------|
 | L-04 | Como DM, quiero fuentes de luz posicionables (antorcha = 3 tiles, linterna = 5 tiles, luz mágica = 8 tiles) con gradiente de iluminación circular. |
 | L-05 | Como DM, quiero que las paredes bloqueen la visión (Line of Sight / LOS) de forma dinámica. |
-| L-06 | Como DM, quiero un control de brillo/contraste global para ajustar el look del mapa (dungeon oscuro vs exterior soleado). |
-| L-07 | Como DM, quiero efectos de luz dinámicos: antorchas que parpadean (flicker shader), luz mágica que pulsa. |
+| L-06 | Como DM, quiero un control de brillo/contraste global para ajustar el look del mapa (via `ColorMatrixFilter`). |
+| L-07 | Como DM, quiero efectos de luz dinámicos: antorchas que parpadean (flicker usando `alpha` + `sin()` en el render loop). |
 | L-08 | Como DM, quiero definir zonas de "luz siempre revelada" (áreas públicas) y "siempre oscuras" (trampas ocultas). |
 
 ---
@@ -135,6 +168,8 @@
 | K-03 | Como DM, quiero un panel de tokens que muestre la lista de personajes activos con sus HP actuales. |
 | K-04 | Como DM, quiero asignar un nombre y HP máximo a cada token para seguimiento en combate. |
 
+> **Nota técnica K-01:** Los tokens son instancias de una clase `GameEntity extends Container`. Cada uno tiene un `Sprite` o `Graphics` interno (círculo con borde), posición `x/y` en el `entityContainer`, interacción via `eventMode = 'static'`, y efecto hover via `ColorMatrixFilter.brightness(1.3)`. On-click enfoca la camera en el token.
+
 ### V2+
 
 | ID | Historia de usuario |
@@ -145,7 +180,7 @@
 | K-08 | Como DM, quiero tamaños de token configurables (Small/Medium/Large/Huge/Gargantuan) con footprint de tiles correspondiente. |
 | K-09 | Como DM, quiero anclar un token a un tile para que no se mueva accidentalmente. |
 | K-10 | Como DM, quiero que los tokens tengan aura visual configurable (radio de aura + color) para marcar spells o amenazas. |
-| K-11 | Como DM, quiero un modo "jugador ve su token" donde los jugadores controlan solo su propio token desde sus dispositivos. |
+| K-11 | Como DM, quiero importar **AnimatedSprites** (spritesheets de Aseprite en formato JSON) para tokens animados de personajes. |
 
 ---
 
@@ -207,6 +242,8 @@
 | S-02 | Como DM, quiero un control de volumen maestro y por categoría (ambiente, efectos, música). |
 | S-03 | Como DM, quiero efectos de sonido instantáneos (combat: espadas, spell: explosión mágica, door: puerta pesada) activables con un botón. |
 
+> **Nota técnica S-01:** Usar **Howler.js** para audio (como lo usa el portfolio de Endigo). Permite sprites de audio, fade in/out, y loops. Los soundscapes cambian con `crossfade()` entre biomas sincroni­zado al switch de bioma en el estado de Zustand.
+
 ### V2+
 
 | ID | Historia de usuario |
@@ -215,7 +252,6 @@
 | S-05 | Como DM, quiero un mixer de capas de audio (capa de ambiente + capa de música + capa de efectos) independientes. |
 | S-06 | Como DM, quiero importar mis propios archivos de audio (MP3/OGG) para soundscapes personalizados. |
 | S-07 | Como DM, quiero que los efectos de sonido se sincronicen con animaciones del mapa (trueno cuando aparece relámpago). |
-| S-08 | Como DM, quiero un modo "Spotify Connect" para controlar música de Spotify sin salir de la app. |
 
 ---
 
@@ -248,6 +284,8 @@
 | E-01 | Como DM, quiero exportar el mapa como PNG de alta resolución para imprimirlo o compartirlo. |
 | E-02 | Como DM, quiero guardar y cargar proyectos de mapa en formato JSON (save/load local). |
 
+> **Nota técnica E-01:** Usar `app.renderer.extract.canvas(app.stage)` de PixiJS para extraer el contenido del canvas WebGL como imagen PNG. Mucho más confiable que `html2canvas` para contenido WebGL.
+
 ### V2+
 
 | ID | Historia de usuario |
@@ -257,7 +295,7 @@
 | E-05 | Como DM, quiero compartir el mapa via URL corta para que otros DMs lo vean en modo "view-only". |
 | E-06 | Como DM, quiero exportar el mapa como GIF animado (con efectos de viento/agua) para compartir en redes. |
 | E-07 | Como DM, quiero exportar como PDF con leyenda de tiles y notas de mapa. |
-| E-08 | Como DM, quiero importar mapas desde imágenes existentes (JPEG/PNG) como capa de fondo, encima de la cual colocar tiles digitales. |
+| E-08 | Como DM, quiero importar mapas desde imágenes existentes (JPEG/PNG) como capa de fondo. |
 
 ---
 
@@ -296,7 +334,30 @@
 
 ---
 
-## ~~EPIC 13 — Renderer 3D~~ ❌ Descartado
+## EPIC 13 — Performance & Quality del Renderer ⚡
+
+*Nueva épica técnica derivada del análisis de PixiJS v8 y el código de producción de Endigo Design.*
+
+### MVP
+
+| ID | Historia de usuario |
+|----|---------------------|
+| R-01 | Como DM, quiero que el mapa de 50×50 tiles corra a 60 FPS constantes sin caídas al añadir efectos atmosféricos. |
+| R-02 | Como usuario, quiero que el mapa cargue en menos de 2 segundos, con barra de progreso visible mientras se cargan assets. |
+
+### V2+
+
+| ID | Historia de usuario |
+|----|---------------------|
+| R-03 | Como DM, quiero poder expandir el tablero a 100×100 tiles sin caída de framerate (Texture Caching + Sprite batching). |
+| R-04 | Como DM, quiero que las partículas de lluvia y lava corran a full speed via `ParticleContainer` sin impactar el rendering del mundo. |
+| R-05 | Como DM, quiero soporte para spritesheets de Aseprite (JSON + PNG) como texturas de tiles/entidades, cargados via `Assets.load()`. |
+| R-06 | Como DM, quiero que los tokens soporten animaciones de spritesheet (`AnimatedSprite`) para personajes con walk/idle cycles. |
+| R-07 | Como DM, quiero un monitor de FPS en modo debug para detectar caídas de rendimiento. |
+
+---
+
+## ~~EPIC 14 — Renderer 3D~~ ❌ Descartado
 
 > **Motivo:** La TV usada horizontalmente como base de mesa hace que el top-down 2D sea la vista óptima. El isométrico/3D añadiría complejidad sin beneficio real para este caso de uso. **Solo PixiJS 2D.**
 
@@ -307,70 +368,81 @@
 ### 🟢 MVP (v1.0) — Lanzamiento inicial
 
 ```
-EPIC 1 — Grid & Canvas (G-01 a G-07)
-EPIC 2 — Tiles & Biomas (T-01 a T-05)
-EPIC 3 — Efectos Atmosféricos (A-01 a A-05)
-EPIC 4 — FOW básico (L-01 a L-03)
-EPIC 5 — Tokens básicos (K-01 a K-04)
-EPIC 6 — Initiative Tracker (C-01 a C-04)
-EPIC 7 — Generadores de nombres (N-01 a N-03)
-EPIC 8 — Audio básico (S-01 a S-03)
-EPIC 9 — DM Notes (D-01 a D-02)
+EPIC 1  — Grid & Canvas (G-01 a G-07)
+EPIC 2  — Tiles & Biomas (T-01 a T-05)
+EPIC 3  — Efectos Atmosféricos (A-01 a A-05)
+EPIC 4  — FOW básico (L-01 a L-03)
+EPIC 5  — Tokens básicos (K-01 a K-04)
+EPIC 6  — Initiative Tracker (C-01 a C-04)
+EPIC 7  — Generadores de nombres (N-01 a N-03)
+EPIC 8  — Audio básico (S-01 a S-03)
+EPIC 9  — DM Notes (D-01 a D-02)
 EPIC 10 — Save/Load + PNG export (E-01 a E-02)
 EPIC 11 — Player View / TV Mode (V-01 a V-03)
-~~EPIC 13 — 3D renderer~~ (descartado)
+EPIC 13 — Performance básica: 60 FPS @ 50×50 (R-01 a R-02)
 ```
 
 ### 🟡 V1.5 — Post-lanzamiento rápido
 
 ```
-EPIC 4 — Light sources + LOS (L-04 a L-06)
-EPIC 5 — Token avatars + HP bars (K-05 a K-07)
-EPIC 6 — Spell templates + ruler (C-06 a C-07)
-EPIC 7 — Dungeon generator (N-04 a N-05)
+EPIC 4  — Light sources + LOS (L-04 a L-06)
+EPIC 5  — Token avatars + HP bars (K-05 a K-07)
+EPIC 6  — Spell templates + ruler (C-06 a C-07)
+EPIC 7  — Dungeon generator (N-04 a N-05)
 EPIC 10 — Roll20 export (E-03)
 EPIC 11 — Scene transitions (V-04 a V-05)
+EPIC 13 — Texture Caching + ParticleContainer (R-03 a R-04)
 ```
 
 ### 🔵 V2.0 — Feature completo
 
 ```
-EPIC 2 — Custom textures + auto-tile (T-06 a T-11)
-EPIC 3 — Storm + snow + heat haze (A-06 a A-12)
-EPIC 4 — Dynamic light flicker + LOS full (L-07 a L-08)
-EPIC 5 — Auras + player-controlled tokens (K-10 a K-11)
-EPIC 8 — Audio mixer + custom import (S-04 a S-08)
-EPIC 9 — NPC DB + campaign timeline (D-03 a D-06)
+EPIC 2  — Custom textures + Aseprite import + auto-tile (T-06 a T-12)
+EPIC 3  — Storm + snow + heat haze (A-06 a A-12)
+EPIC 4  — Dynamic light flicker + LOS full (L-07 a L-08)
+EPIC 5  — Auras + AnimatedSprite tokens (K-10 a K-11)
+EPIC 8  — Audio mixer + custom import (S-04 a S-07)
+EPIC 9  — NPC DB + campaign timeline (D-03 a D-06)
 EPIC 10 — Foundry + URL share + GIF export (E-04 a E-08)
 EPIC 12 — Multiplayer full (M-01 a M-05)
-
+EPIC 13 — AnimatedSprite entities + FPS monitor (R-05 a R-07)
 ```
 
 ---
 
-## Stack Técnico Recomendado
+## Stack Técnico
 
 | Capa | Tecnología | Razón |
 |------|-----------|-------|
 | UI / DM Panel | React 18 + Vite | Componentes reactivos, hot reload |
-| Estado global | Zustand | Simple, sin boilerplate |
-| Renderer 2D | **PixiJS 8** ✅ | WebGL acelerado, shaders, partículas |
-| Shaders | GLSL inline | Agua, fuego, viento, FOW |
-| Renderer 3D | Three.js | Escenas 3D bajo demanda |
-| Audio | Howler.js | Cross-browser, sprite support |
-| Animaciones | GSAP | Tweens suaves (tokens, transiciones) |
+| Estado global | Zustand | Simple, sin boilerplate, suscripciones selectivas |
+| Renderer 2D | **PixiJS 8** ✅ | WebGL/WebGPU acelerado, batching nativo, filtros, partículas |
+| Texture generation | `app.renderer.generateTexture()` | Pre-compila tiles estáticos a GPU textures |
+| Partículas | `PIXI.ParticleContainer` | 10–100× más rápido que Container para efectos masivos |
+| Agua | `DisplacementFilter` + `cloud.jpg` | Técnica Red Stapler, efecto fluido ultra realista |
+| Cámara | Clase `Camera` custom | Drag-to-pan, clamp bounds, `centerOnTarget()` con invlerp |
+| Entidades | `AnimatedSprite` + spritesheet JSON | Personajes/tokens con animaciones walk/idle (estilo Endigo) |
+| Grid Debug | `TilingSprite` | Un solo Sprite para toda la overlay del grid |
+| Filtros visuales | `ColorMatrixFilter`, `BlurFilter` | Night mode, hover effect, FOW, iluminación |
+| Audio | **Howler.js** | Cross-browser, sprites, loops, fade in/out |
+| Animaciones UI | GSAP | Tweens suaves (tokens, modales, transiciones de escena) |
 | Networking | Socket.io | Multiplayer en V2 |
 | Persistencia | IndexedDB / localStorage | Guardado local offline-first |
-| Export | html2canvas + jsPDF | PNG/PDF export |
+| Export imagen | `app.renderer.extract.canvas()` | Export PNG desde WebGL, nativo de PixiJS |
 | Estilo | Vanilla CSS (dark gold theme) | Control total, sin deps extra |
+| Assets de mapa | **Tiled Map Editor** + **Aseprite** | Workflow profesional de pixel art (como Endigo) |
 
 ---
 
 ## Referencias de Investigación
 
-- **donjon.bin.sh** — Markov chain name generators (persona, lugar, deidad), dungeon generator, encounter tables, loot tables.
-- **app.dungeonscrawl.com** — Top-down 2D map editor, multi-layer system, wall auto-tile, texture library, Fog of War, lighting con LOS, export PNG/PDF, Roll20 compatible, plugins system.
+- **donjon.bin.sh** — Markov chain name generators, dungeon generator, encounter tables, loot tables.
+- **app.dungeonscrawl.com** — Top-down 2D map editor, multi-layer system, wall auto-tile, Fog of War, LOS, export PNG/PDF.
+- **endigodesign.com/works/gaming/portfolio** — Portfolio game real con PixiJS: World (PNG), Camera, Grid (TilingSprite), GameObject (AnimatedSprite + pathing), efectos hover (ColorMatrixFilter). [Source code](https://github.com/endigo9740/endigo-design/tree/v1).
+- **Red Stapler Water Effect** — DisplacementFilter con noise map para agua ultra realista. [GitHub](https://github.com/8ctopotamus/pixi-water-effect-example).
+- **Zelda: Echoes of Wisdom** — Estilo visual de referencia: pixel art top-down, bordes limpios, agua con highlights geométricos, paleta saturada.
+- **Hyper Light Drifter** — Estético alternativo para biomas oscuros (dungeon, cave, lava).
 
 ---
 
-*Última actualización: Marzo 2026 — v1.0 Draft*
+*Última actualización: Marzo 2026 — v1.1 (incorpora análisis técnico de PixiJS v8 y referencial Endigo Design)*

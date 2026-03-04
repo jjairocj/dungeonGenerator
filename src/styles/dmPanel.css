@@ -549,3 +549,142 @@
     background: var(--panel-border);
     margin: 12px 0;
 }
+
+/* ============================================================
+   TOOLBAR (G-04 / G-06 / G-07)
+   ============================================================ */
+.dm-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 6px 10px;
+    border-bottom: 1px solid var(--panel-border);
+    background: rgba(0, 0, 0, 0.2);
+    flex-shrink: 0;
+    flex-wrap: wrap;
+}
+
+.dm-toolbar__group {
+    display: flex;
+    align-items: center;
+    gap: 3px;
+    position: relative;
+}
+
+.dm-toolbar__group+.dm-toolbar__group::before {
+    content: '';
+    width: 1px;
+    height: 18px;
+    background: var(--panel-border);
+    margin-right: 3px;
+}
+
+.tool-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 30px;
+    height: 30px;
+    background: var(--panel-lt);
+    border: 1px solid var(--panel-border);
+    border-radius: var(--radius-sm);
+    color: var(--muted);
+    font-size: 14px;
+    cursor: pointer;
+    transition: all var(--transition);
+    flex-shrink: 0;
+    line-height: 1;
+}
+
+.tool-btn:hover:not(:disabled) {
+    border-color: var(--gold-border);
+    color: var(--gold);
+    background: var(--gold-dim);
+}
+
+.tool-btn.active {
+    background: var(--gold-dim);
+    border-color: var(--gold);
+    color: var(--gold);
+    box-shadow: 0 0 8px rgba(200, 168, 75, 0.2);
+}
+
+.tool-btn:disabled {
+    opacity: 0.3;
+    cursor: not-allowed;
+}
+
+/* ============================================================
+   GRID SIZE CONTROLS (G-01)
+   ============================================================ */
+.dm-grid-size {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 6px 10px;
+    border-bottom: 1px solid var(--panel-border);
+    background: rgba(0, 0, 0, 0.1);
+    flex-shrink: 0;
+    gap: 6px;
+}
+
+.dm-grid-size__label {
+    font-size: 10px;
+    color: var(--muted);
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    white-space: nowrap;
+}
+
+.dm-grid-size__inputs {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 10px;
+    color: var(--muted);
+}
+
+.size-input {
+    width: 40px;
+    padding: 3px 5px;
+    background: var(--panel-lt);
+    border: 1px solid var(--panel-border);
+    border-radius: var(--radius-sm);
+    color: var(--text);
+    font-size: 11px;
+    text-align: center;
+    outline: none;
+    transition: border-color var(--transition);
+    -moz-appearance: textfield;
+}
+
+.size-input::-webkit-inner-spin-button,
+.size-input::-webkit-outer-spin-button {
+    opacity: 0;
+}
+
+.size-input:focus {
+    border-color: var(--gold-border);
+    color: var(--gold);
+}
+
+.apply-btn {
+    width: 22px;
+    height: 22px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--gold-dim);
+    border: 1px solid var(--gold-border);
+    border-radius: var(--radius-sm);
+    color: var(--gold);
+    font-size: 12px;
+    cursor: pointer;
+    transition: all var(--transition);
+    flex-shrink: 0;
+}
+
+.apply-btn:hover {
+    background: rgba(200, 168, 75, 0.25);
+    box-shadow: 0 0 8px rgba(200, 168, 75, 0.2);
+}
