@@ -46,12 +46,20 @@ export default function DMPanel() {
     const history = useBoardStore((s) => s.history);
     const future = useBoardStore((s) => s.future);
 
+    // G-12: Stamps & Clipboard
+    const clipboard = useBoardStore((s) => s.clipboard);
+    const stamps = useBoardStore((s) => s.stamps);
+    const saveStamp = useBoardStore((s) => s.saveStamp);
+    const deleteStamp = useBoardStore((s) => s.deleteStamp);
+    const loadStampToClipboard = useBoardStore((s) => s.loadStampToClipboard);
+
     const [activeSection, setActiveSection] = useState('tiles');
     const [sizeInput, setSizeInput] = useState({ cols: gridCols, rows: gridRows });
     const { t } = useTranslation();
 
     const tabs = [
         { id: 'tiles', label: t('dmPanel.tabs.tiles') },
+        { id: 'stamps', label: t('dmPanel.tabs.stamps', '📥 Sellos') },
         { id: 'biomes', label: t('dmPanel.tabs.biomes') },
         { id: 'layers', label: t('dmPanel.tabs.layers', 'Capas') },
         { id: 'effects', label: t('dmPanel.tabs.effects') },
@@ -251,6 +259,46 @@ export default function DMPanel() {
                                 </button>
                             ))}
                         </div>
+                    </section>
+                )}
+
+                {/* --- STAMPS (G-12) --- */}
+                {activeSection === 'stamps' && (
+                    <section className="dm-section dm-stamps">
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+                            <h2 className="dm-section__title" style={{ margin: 0 }}>{t('dmPanel.stamps.title')}</h2>
+                            <button
+                                className="dm-nav-btn"
+                                onClick={() => saveStamp()}
+                                disabled={!clipboard || clipboard.length === 0}
+                                title={t('dmPanel.stamps.saveCurrent')}
+                                style={{ padding: '4px 8px' }}
+                            >
+                                {t('dmPanel.stamps.saveCurrent')}
+                            </button>
+                        </div>
+
+                        {stamps.length === 0 ? (
+                            <p className="dm-section__hint">{t('dmPanel.stamps.empty')}</p>
+                        ) : (
+                            <>
+                                <p className="dm-section__hint">{t('dmPanel.stamps.selectHint')}</p>
+                                <div className="levels-list" style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                                    {stamps.map((stamp) => (
+                                        <div key={stamp.id} className="level-item" style={{ display: 'flex', justifyContent: 'space-between', padding: '6px', background: 'rgba(255,255,255,0.05)', borderRadius: '4px', cursor: 'pointer' }} onClick={() => loadStampToClipboard(stamp.id)}>
+                                            <span style={{ fontWeight: '500' }}>{stamp.name} ({stamp.tiles.length} tiles)</span>
+                                            <button
+                                                onClick={(e) => { e.stopPropagation(); deleteStamp(stamp.id); }}
+                                                style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#e74c3c' }}
+                                                title="Delete"
+                                            >
+                                                🗑️
+                                            </button>
+                                        </div>
+                                    ))}
+                                </div>
+                            </>
+                        )}
                     </section>
                 )}
 

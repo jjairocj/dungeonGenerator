@@ -37,9 +37,10 @@ export const PAINT_MODES = {
   BRUSH: 'brush',
   ERASER: 'eraser',
   FILL: 'fill',         // flood fill on a single contiguous region
-  RECTANGLE: 'rectangle', // draw rect (G-08)
-  ELLIPSE: 'ellipse',     // draw ellipse (G-08)
+  RECTANGLE: 'rectangle', // fill a rectangular area (G-08)
+  ELLIPSE: 'ellipse',     // fill an elliptical area (G-08)
   SELECT: 'select',       // select area for copy/paste (G-13)
+  STAMP: 'stamp',         // paste saved clipboard (G-12)
 };
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -216,6 +217,7 @@ export const useBoardStore = create((set, get) => ({
 
     if (paintMode === PAINT_MODES.FILL) return;
     if (paintMode === PAINT_MODES.SELECT) return;
+    if (paintMode === PAINT_MODES.STAMP) return; // handled by PixiBoard directly
 
     const layer = levels[activeLevelIndex].layers[activeLayerIndex];
     if (layer.locked || !layer.visible) return;
@@ -389,6 +391,29 @@ export const useBoardStore = create((set, get) => ({
       const newLevels = [...levels];
       newLevels[activeLevelIndex].layers[activeLayerIndex] = { ...layer, tiles: newTiles };
       set({ levels: newLevels });
+    }
+  },
+
+  // ── Stamps Gallery (G-12) ──
+  stamps: [], // Array of { id, name, tiles: [{dx, dy, type}] }
+  saveStamp: (name) => {
+    const { clipboard, stamps } = get();
+    if (!clipboard || clipboard.length === 0) return;
+    set({
+      stamps: [...stamps, {
+        id: `stamp-${Date.now()}`,
+        name: name || `Sello ${stamps.length + 1}`,
+        tiles: [...clipboard]
+      }]
+    });
+  },
+  deleteStamp: (id) => {
+    set({ stamps: get().stamps.filter(s => s.id !== id) });
+  },
+  loadStampToClipboard: (stampId) => {
+    const stamp = get().stamps.find(s => s.id === stampId);
+    if (stamp) {
+      set({ clipboard: [...stamp.tiles], paintMode: PAINT_MODES.STAMP });
     }
   },
 

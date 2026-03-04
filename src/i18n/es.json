@@ -70,7 +70,9 @@
         "subtitle": "Motor de Tiles D&D",
         "tabs": {
             "tiles": "🗺️ Tiles",
+            "stamps": "📥 Sellos",
             "biomes": "🌍 Biomas",
+            "layers": "Capas",
             "effects": "✨ Efectos",
             "audio": "🔊 Audio"
         },
@@ -81,6 +83,12 @@
         "biomes": {
             "title": "Relleno de Bioma",
             "hint": "Rellena todo el tablero con tiles del bioma"
+        },
+        "stamps": {
+            "title": "Galería de Sellos",
+            "saveCurrent": "💾 Guardar Selección Actual",
+            "empty": "No hay sellos. Usa la herramienta de Selección (⬚) y guárdala aquí.",
+            "selectHint": "Clic en un Sello para usarlo"
         },
         "layers": {
             "title": "Gestión de Capas",

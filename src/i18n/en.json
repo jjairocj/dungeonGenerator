@@ -70,7 +70,9 @@
         "subtitle": "D&D Tile Engine POC",
         "tabs": {
             "tiles": "🗺️ Tiles",
+            "stamps": "📥 Stamps",
             "biomes": "🌍 Biomes",
+            "layers": "Layers",
             "effects": "✨ Effects",
             "audio": "🔊 Audio"
         },
@@ -81,6 +83,12 @@
         "biomes": {
             "title": "Biome Fill",
             "hint": "Flood-fills entire board with biome tiles"
+        },
+        "stamps": {
+            "title": "Stamp Gallery",
+            "saveCurrent": "💾 Save Current Selection",
+            "empty": "No stamps yet. Use the Select tool (⬚) to copy an area and save it here.",
+            "selectHint": "Click a Stamp to use it"
         },
         "layers": {
             "title": "Layer Management",

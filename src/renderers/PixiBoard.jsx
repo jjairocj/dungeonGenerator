@@ -490,7 +490,9 @@ export default function PixiBoard() {
                 if (c >= 0 && c < cols && r >= 0 && r < rows) {
                     if (pm === PAINT_MODES.FILL && !isDrag) {
                         ff(c, r);
-                    } else if (pm !== PAINT_MODES.FILL) {
+                    } else if (pm === PAINT_MODES.STAMP && !isDrag) {
+                        stateRef.current.pasteClipboard(c, r);
+                    } else if (pm !== PAINT_MODES.FILL && pm !== PAINT_MODES.STAMP) {
                         pt(c, r);
                     }
                 }
