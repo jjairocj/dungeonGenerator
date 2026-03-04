@@ -1,398 +1,358 @@
-# DNDTiles — Arquitectura de Sistema
-*Decisiones técnicas, base de datos, escalamiento y plataforma*
+# DNDTiles — Arquitectura de Sistema V1.0
+*Stack self-hosted · Auth propia · Sin costos de BaaS*
 
 ---
 
-## 1. Visión y Contexto de Escala
+## 1. Visión y Escala
 
-Antes de elegir tecnologías, definimos los escenarios de uso:
-
-| Horizonte | Usuarios concurrentes | Tamaño de mapa típico | Features activos |
-|-----------|----------------------|----------------------|------------------|
-| **MVP / Alpha** | 1–50 DMs (uso personal + amigos) | 30×30 tiles, ~5 tokens | Offline-first, sin multiplayer |
-| **V1.0 Público** | 100–1.000 usuarios registrados | 50×50, ~20 tokens, assets | Auth + cloud save |
-| **V2.0 Escala** | 10.000+ usuarios, salas multijugador | 100×100, capas, audio custom | Realtime WebSocket, CDN |
-
-> **Decisión clave:** Diseñar para V1.0 desde el inicio, pero que el path a V2.0 no requiera reescribir nada.
+| Horizonte | Usuarios | Features |
+|-----------|---------|---------|
+| **V1.0 MVP** | 1–500 usuarios | Auth propia, cloud save, map editor completo |
+| **V2.0** | 1.000–10.000 | Multiplayer realtime, assets custom, export avanzado |
+| **V3.0** | 10.000+ | Escala horizontal, CDN, self-host completo |
 
 ---
 
-## 2. Stack Tecnológico Definitivo
+## 2. Stack Tecnológico
 
-### Frontend
-| Capa | Tecnología | Decisión |
-|------|-----------|----------|
-| Framework | **React 18 + Vite** | Ya en POC ✅ |
-| Estado global | **Zustand** | Ya en POC ✅ |
-| Renderer 2D | **PixiJS 8** | Ya en POC ✅ |
-| Renderer 3D | **Three.js** | Ya en POC ✅ |
-| Auth UI | **Supabase Auth SDK** | Magic link + Discord OAuth |
-| HTTP client | **@supabase/supabase-js** | Todo el data layer |
-| Audio | **Howler.js** | Ya en plan |
-| Animaciones | **GSAP** | Tokens, transiciones |
+### Frontend — `/apps/web`
+| Capa | Tech |
+|------|------|
+| Framework | React 18 + Vite |
+| Estado global | Zustand |
+| Renderer 2D | PixiJS 8 |
+| Renderer 3D | Three.js |
+| HTTP client | axios / fetch nativo |
+| Auth state | JWT en localStorage + Zustand |
+| Audio | Howler.js |
+| Animaciones | GSAP |
+| Estilo | Vanilla CSS (dark gold theme) |
 
-### Backend / BaaS
-| Capa | Tecnología | Explicación |
-|------|-----------|-------------|
-| **Base de datos** | **Supabase (PostgreSQL)** | Ver sección 3 |
-| **Auth** | **Supabase Auth** | JWT, Row Level Security |
-| **Realtime** | **Supabase Realtime** | Channels para multiplayer |
-| **Storage** | **Supabase Storage** | Custom textures, audio, thumbnails |
-| **Edge Functions** | **Supabase Edge Functions** (Deno) | Lógica server-side si se necesita |
+### Backend — `/apps/api`
+| Capa | Tech | Razón |
+|------|------|-------|
+| Runtime | **Node.js + Express** | Simple, conocido, rápido de implementar |
+| ORM | **Prisma** | Ya familiar del proyecto Nexo |
+| Base de datos | **Neon (PostgreSQL)** | Free tier generoso, ya conocido |
+| Auth | **JWT propio** (jsonwebtoken + bcrypt) | Sin dependencia de terceros |
+| Validación | **Zod** | Schemas para endpoints |
+| File storage | **Local en V1** → Cloudflare R2 en V2 | Sin costo inicial |
 
 ### Infraestructura
-| Servicio | Para qué |
-|---------|---------|
-| **Vercel** | Deploy del frontend (CDN global, preview por PR) |
-| **Supabase Cloud** | Managed Postgres + Auth + Realtime + Storage |
-| **Cloudflare R2** (V2+) | CDN de assets de alta demanda si Storage de Supabase no escala |
+| Servicio | Para qué | Costo |
+|---------|---------|-------|
+| **Neon** | PostgreSQL managed | Free (512 MB, 1 branch) |
+| **Render / Railway** | Host del backend API | Free tier (750h/mes) |
+| **Vercel** | Frontend | Free |
+| **Cloudflare R2** | Assets en V2+ | Free (10 GB/mes) |
+
+> **Costo en V1.0: $0/mes** ✅
 
 ---
 
-## 3. Base de Datos — PostgreSQL (Supabase)
+## 3. Arquitectura General
 
-### ¿Por qué PostgreSQL y no MongoDB / Firebase?
-
-| Criterio | PostgreSQL + JSONB | MongoDB | Firebase Firestore |
-|----------|-------------------|---------|--------------------|
-| Datos relacionales (users, campaigns) | 🟢 Excelente | 🟡 Manual | 🟡 Manual |
-| Map data (JSON flexible) | 🟢 JSONB nativo, indexable | 🟢 Natural | 🟡 Limitado |
-| Realtime subscriptions | 🟢 Supabase Realtime (WebSocket) | 🟡 Change Streams (más complejo) | 🟢 Nativo |
-| Auth nativa + RLS | 🟢 Supabase Auth + RLS | 🔴 Requiere stack separado | 🟢 Firebase Auth |
-| File storage | 🟢 Supabase Storage | 🔴 Externo | 🟡 Firebase Storage |
-| SQL queries avanzadas | 🟢 Full SQL | 🔴 No SQL | 🔴 No SQL |
-| Open source / portabilidad | 🟢 Postgres estándar | 🟡 Vendor lock | 🔴 Google lock-in |
-| Costo escala | 🟢 Predecible | 🟡 Variable | 🔴 Costoso a escala |
-
-**Conclusión: Supabase + PostgreSQL + JSONB.**
-Obtenemos lo mejor de relacional (users, campaigns) + documental (map data) en una sola base de datos, con Auth, Realtime y Storage incluidos.
-
----
-
-### Schema de Base de Datos
-
-```sql
--- ─────────────────────────────────────
--- USERS (manejado por Supabase Auth)
--- ─────────────────────────────────────
--- auth.users existe automáticamente, extendemos con perfil:
-
-CREATE TABLE public.profiles (
-  id          UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
-  username    TEXT UNIQUE NOT NULL,
-  display_name TEXT,
-  avatar_url  TEXT,
-  plan        TEXT NOT NULL DEFAULT 'free', -- 'free' | 'pro'
-  created_at  TIMESTAMPTZ DEFAULT NOW()
-);
-
--- ─────────────────────────────────────
--- CAMPAIGNS
--- ─────────────────────────────────────
-CREATE TABLE public.campaigns (
-  id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  owner_id    UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
-  name        TEXT NOT NULL,
-  description TEXT,
-  cover_url   TEXT,        -- thumbnail de la campaña
-  created_at  TIMESTAMPTZ DEFAULT NOW(),
-  updated_at  TIMESTAMPTZ DEFAULT NOW()
-);
-
--- ─────────────────────────────────────
--- MAPS (el core del producto)
--- ─────────────────────────────────────
-CREATE TABLE public.maps (
-  id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  campaign_id   UUID REFERENCES public.campaigns(id) ON DELETE CASCADE,
-  owner_id      UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
-  name          TEXT NOT NULL,
-  thumbnail_url TEXT,
-
-  -- Map data como JSONB (flexible, indexable)
-  data          JSONB NOT NULL DEFAULT '{}',
-  /*
-    data schema:
-    {
-      "width": 30,
-      "height": 30,
-      "tileSize": 64,
-      "renderer": "2d",
-      "tiles": {
-        "x,y": { "type": "grass", "variant": 2, "layer": "base" }
-      },
-      "tokens": [
-        { "id": "uuid", "x": 5, "y": 3, "name": "Gandalf", "hp": 80, "maxHp": 100, "color": "#4c9eff" }
-      ],
-      "effects": {
-        "rain": false, "clouds": true, "cloudSpeed": 0.5, "windIntensity": 0.3
-      },
-      "fogOfWar": {
-        "enabled": true,
-        "revealed": ["5,3", "5,4", "6,3"]
-      },
-      "lights": [],
-      "notes": "",
-      "biome": "plains"
-    }
-  */
-
-  -- Metadata separada para queries rápidas sin parsear JSONB:
-  width         INT NOT NULL DEFAULT 30,
-  height        INT NOT NULL DEFAULT 30,
-  biome         TEXT NOT NULL DEFAULT 'plains',
-
-  is_public     BOOLEAN DEFAULT FALSE,   -- share via URL
-  created_at    TIMESTAMPTZ DEFAULT NOW(),
-  updated_at    TIMESTAMPTZ DEFAULT NOW()
-);
-
--- Index para búsqueda rápida:
-CREATE INDEX maps_owner_id_idx ON public.maps(owner_id);
-CREATE INDEX maps_campaign_id_idx ON public.maps(campaign_id);
-CREATE INDEX maps_data_gin ON public.maps USING GIN(data); -- búsqueda dentro del JSON
-
--- ─────────────────────────────────────
--- ASSETS (texturas/audio custom del usuario)
--- ─────────────────────────────────────
-CREATE TABLE public.assets (
-  id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  owner_id     UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
-  name         TEXT NOT NULL,
-  type         TEXT NOT NULL,   -- 'texture' | 'audio' | 'token_avatar'
-  storage_path TEXT NOT NULL,   -- Supabase Storage bucket path
-  size_bytes   BIGINT,
-  created_at   TIMESTAMPTZ DEFAULT NOW()
-);
-
--- ─────────────────────────────────────
--- SESSIONS (multiplayer, V2)
--- ─────────────────────────────────────
-CREATE TABLE public.sessions (
-  id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  map_id      UUID NOT NULL REFERENCES public.maps(id) ON DELETE CASCADE,
-  host_id     UUID NOT NULL REFERENCES public.profiles(id),
-  invite_code TEXT UNIQUE NOT NULL,  -- 6-char code (ej: "XKCD42")
-  is_active   BOOLEAN DEFAULT TRUE,
-  created_at  TIMESTAMPTZ DEFAULT NOW(),
-  expires_at  TIMESTAMPTZ DEFAULT NOW() + INTERVAL '12 hours'
-);
-
--- ─────────────────────────────────────
--- ROW LEVEL SECURITY (RLS)
--- ─────────────────────────────────────
-ALTER TABLE public.maps ENABLE ROW LEVEL SECURITY;
-
--- Solo el owner puede ver/editar sus mapas (excepto públicos):
-CREATE POLICY "maps_owner_policy" ON public.maps
-  USING (owner_id = auth.uid() OR is_public = TRUE);
-
-CREATE POLICY "maps_insert_policy" ON public.maps
-  FOR INSERT WITH CHECK (owner_id = auth.uid());
-
-CREATE POLICY "maps_update_policy" ON public.maps
-  FOR UPDATE USING (owner_id = auth.uid());
-
--- (Aplicar RLS similar a campaigns, assets, sessions)
+```
+┌────────────────────────────────────────────────────────────────┐
+│                    FRONTEND (Vercel)                           │
+│                                                                │
+│  ┌──────────────────┐           ┌──────────────────────────┐  │
+│  │   DM Panel Tab   │           │  Player View Tab (TV)    │  │
+│  │  React + Zustand │  shared   │  React + canvas only     │  │
+│  │  PixiJS / Three  │  state    │  FOW overlay             │  │
+│  └────────┬─────────┘           └──────────────────────────┘  │
+│           │ REST API (JWT)                                     │
+└───────────┼────────────────────────────────────────────────────┘
+            │
+            ▼
+┌────────────────────────────────────────────────────────────────┐
+│                    BACKEND (Render/Railway)                    │
+│                                                                │
+│  ┌─────────────────────────────────────────────────────────┐  │
+│  │                Node.js + Express                        │  │
+│  │                                                         │  │
+│  │  POST /auth/register   POST /auth/login                 │  │
+│  │  GET  /maps            POST /maps                       │  │
+│  │  GET  /maps/:id        PUT  /maps/:id                   │  │
+│  │  DELETE /maps/:id                                       │  │
+│  │  GET  /campaigns       POST /campaigns                  │  │
+│  └────────────────┬────────────────────────────────────────┘  │
+│                   │ Prisma Client                              │
+└───────────────────┼────────────────────────────────────────────┘
+                    │
+                    ▼
+┌────────────────────────────────────────────────────────────────┐
+│                    Neon PostgreSQL                             │
+│  users · campaigns · maps · assets · sessions (V2)            │
+└────────────────────────────────────────────────────────────────┘
 ```
 
 ---
 
-## 4. Modelo de Datos del Mapa (JSONB)
+## 4. Auth — JWT Propio
 
-El campo `data` en la tabla `maps` almacena todo el estado del mapa como un documento JSON. Esto es clave porque:
-
-- **Flexible**: podemos agregar campos sin ALTER TABLE
-- **Atómico**: guardamos el mapa completo en un PUT, sin joins
-- **Indexable**: con GIN index podemos hacer queries dentro del JSON
-- **Serializable**: el mismo objeto se usa en Zustand store del frontend
+### Flujo completo
 
 ```
-MapData {
-  width, height, tileSize
-  renderer: "2d" | "3d"
-  biome: string
-  tiles: { "x,y": TileData }
-  tokens: Token[]
-  effects: EffectsConfig
-  fogOfWar: { enabled, revealed: string[] }
-  lights: Light[]
-  notes: string (markdown)
-  initiativeOrder: CombatantEntry[]
-  layers: LayerConfig[]   // V2
+Register:
+  POST /auth/register { email, password, username }
+  → hash password con bcrypt (cost 12)
+  → crear user en DB
+  → devolver { accessToken, refreshToken }
+
+Login:
+  POST /auth/login { email, password }
+  → buscar user por email
+  → bcrypt.compare(password, hash)
+  → si ok: generar JWT
+  → devolver { accessToken (15min), refreshToken (7d) }
+
+Request autenticado:
+  Authorization: Bearer <accessToken>
+  → middleware verifica JWT con secret
+  → inyecta req.user = { id, email }
+
+Refresh:
+  POST /auth/refresh { refreshToken }
+  → verificar refresh token (guardado en DB)
+  → emitir nuevo accessToken
+
+Logout:
+  POST /auth/logout
+  → invalidar refreshToken en DB
+```
+
+### Tokens
+```js
+// accessToken: corto, sin persistencia en DB
+jwt.sign({ sub: user.id, email }, JWT_SECRET, { expiresIn: "15m" })
+
+// refreshToken: largo, guardado en tabla refresh_tokens
+jwt.sign({ sub: user.id, jti: crypto.randomUUID() }, REFRESH_SECRET, { expiresIn: "7d" })
+```
+
+---
+
+## 5. Schema de Base de Datos (Prisma)
+
+```prisma
+// schema.prisma
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  username     String   @unique
+  passwordHash String
+  displayName  String?
+  avatarUrl    String?
+  plan         String   @default("free") // "free" | "pro"
+  createdAt    DateTime @default(now())
+
+  campaigns    Campaign[]
+  maps         Map[]
+  refreshTokens RefreshToken[]
+}
+
+model RefreshToken {
+  id        String   @id @default(cuid())
+  token     String   @unique
+  userId    String
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Campaign {
+  id          String   @id @default(cuid())
+  ownerId     String
+  name        String
+  description String?
+  coverUrl    String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  owner User  @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  maps  Map[]
+}
+
+model Map {
+  id           String   @id @default(cuid())
+  ownerId      String
+  campaignId   String?
+  name         String
+  thumbnailUrl String?
+
+  // Todo el estado del mapa como JSON
+  // { width, height, tiles, tokens, effects, fogOfWar, lights, notes }
+  data         Json     @default("{}")
+
+  // Metadata separada para queries rápidas
+  width        Int      @default(30)
+  height       Int      @default(30)
+  biome        String   @default("plains")
+  isPublic     Boolean  @default(false)
+
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  owner    User      @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  campaign Campaign? @relation(fields: [campaignId], references: [id])
+}
+
+model Asset {
+  id          String   @id @default(cuid())
+  ownerId     String
+  name        String
+  type        String   // "texture" | "audio" | "token_avatar"
+  storagePath String
+  sizeBytes   Int?
+  createdAt   DateTime @default(now())
 }
 ```
 
 ---
 
-## 5. Autenticación
-
-### Flujo de Auth
+## 6. API Endpoints
 
 ```
-Usuario llega → Login con:
-  ├── Magic Link (email) → sin contraseña, más simple
-  ├── Discord OAuth → ideal para comunidad D&D/gaming
-  └── Google OAuth → alternativa general
+AUTH
+  POST   /api/auth/register        { email, password, username }
+  POST   /api/auth/login           { email, password }
+  POST   /api/auth/refresh         { refreshToken }
+  POST   /api/auth/logout          🔒
 
-→ Supabase emite JWT (HS256)
-→ Frontend guarda JWT en localStorage (via Supabase SDK)
-→ Todas las queries a Supabase llevan el JWT → RLS automático
-```
+CAMPAIGNS
+  GET    /api/campaigns            🔒 — mis campañas
+  POST   /api/campaigns            🔒 { name, description }
+  DELETE /api/campaigns/:id        🔒
 
-### Planes de acceso (futuro monetización)
+MAPS
+  GET    /api/maps                 🔒 — mis mapas (paginado)
+  POST   /api/maps                 🔒 { name, campaignId?, width, height, biome }
+  GET    /api/maps/:id             🔒 (o público si isPublic)
+  PUT    /api/maps/:id             🔒 { data, name, biome, ... }
+  DELETE /api/maps/:id             🔒
+  GET    /api/maps/:id/share       🔒 — generar URL pública temporal
 
-| Plan | Límite mapas | Mapa máximo | Assets storage | Multiplayer |
-|------|-------------|-------------|----------------|-------------|
-| **Free** | 5 mapas | 30×30 | 100 MB | ❌ |
-| **Pro** ($5/mes) | Ilimitados | 100×100 | 5 GB | ✅ |
-| **Team** ($15/mes) | Ilimitados | 200×200 | 20 GB | ✅ hasta 8 jugadores |
-
-> Estos límites se verifican en Edge Functions (server-side), no en el frontend.
-
----
-
-## 6. Persistencia — Estrategia Offline-First
-
-Para el MVP, la estrategia es **local-first con sync opcional**:
-
-```
-Sesión de edición:
-  Zustand (RAM) ←→ Auto-save cada 30seg ←→ Supabase (cloud)
-                ←→ localStorage (fallback offline)
-
-Al abrir la app:
-  1. Cargar desde Supabase (si hay auth + internet)
-  2. Fallback a localStorage (sin internet o sin auth)
-  3. Al recuperar internet → sync con Supabase
-```
-
-**¿Por qué no guardar tile por tile en la DB?**
-Guardar `tiles` como filas individuales (30×30 = 900 filas) sería lento y costoso. El JSONB blob es más eficiente: un solo UPDATE guarda un mapa completo. Para mapas 100×100 = ~10.000 tiles, el JSON comprimido es ~50–200 KB — perfectamente manejable.
-
----
-
-## 7. Assets y Storage
-
-| Tipo | Bucket | Límite size | Visibilidad |
-|------|--------|-------------|-------------|
-| Texturas custom | `user-assets/textures/` | 2 MB/archivo | Private (owner only) |
-| Audio custom | `user-assets/audio/` | 10 MB/archivo | Private |
-| Token avatars | `user-assets/tokens/` | 512 KB/archivo | Private |
-| Map thumbnails | `map-thumbnails/` | 1 MB | Public (para share) |
-| Assets comunitarios | `community-assets/` | N/A | Public |
-
-**CDN:** Supabase Storage usa CloudFront internamente, por lo que los assets ya tienen CDN global.
-
----
-
-## 8. Multiplayer (V2) — Realtime Architecture
-
-```
-DM (host)                  Supabase Realtime              Jugadores (clients)
-   │                            │                              │
-   │  JOIN channel              │                              │
-   │  "session:{invite_code}"   │                              │
-   │─────────────────────────▶ │                              │
-   │                            │                              │
-   │  BROADCAST: map_patch      │   ── forward ──▶            │
-   │  { type: "tile_update",    │                              │
-   │    x, y, tile }            │                              │
-   │─────────────────────────▶ │─────────────────────────────▶│
-   │                            │                              │
-   │  BROADCAST: token_move     │                              │
-   │─────────────────────────▶ │─────────────────────────────▶│
-   │                            │                              │
-   │  PRESENCE: online users    │                              │
-   │─────────────────────────▶ │ ←───────────────────────────│
-```
-
-**Supabase Realtime** maneja WebSockets nativamente con `BROADCAST` (peer-to-peer) y `PRESENCE` (usuarios online). No necesitamos correr nuestro propio server de sockets.
-
-**Conflictos:** Para V2, usamos el approach "DM is the truth" — solo el host puede modificar el mapa; los jugadores solo mueven sus propios tokens.
-
----
-
-## 9. Escalamiento — Consideraciones
-
-### Cuellos de botella potenciales y soluciones
-
-| Problema | Cuándo ocurre | Solución |
-|---------|--------------|---------|
-| Mapas muy grandes (100×100) | V2+ | Chunk-based JSONB (dividir en sectores), cargar tiles visibles only |
-| Muchas sessiones realtime | >500 sesiones concurrentes | Supabase escala Realtime horizontalmente (plan Pro) |
-| Storage lleno | Muchos assets custom | Migrar a Cloudflare R2 (mucho más barato a escala: $0.015/GB vs $0.09/GB) |
-| Latencia en saves | Mapa grande + conexión lenta | Differential saves (guardar solo el PATCH del mapa, no el JSON completo) |
-| Auth tokens expirados | Sesión larga (6h+ de juego) | Supabase auto-refresh, refresh token silencioso |
-
-### Costo estimado por fase
-
-| Fase | Usuarios | Supabase plan | Costo/mes |
-|------|---------|--------------|-----------|
-| Alpha | <50 | Free tier | $0 |
-| V1.0 Público | <1.000 | Supabase Pro | $25 |
-| V2.0 | >10.000 | Supabase Team | $599 (o self-host en Railway) |
-
-> A >10k usuarios activos conviene evaluar **self-hosting Supabase** en Railway/Fly.io (~$50/mes con mucho más control).
-
----
-
-## 10. Diagrama de Arquitectura Completa
-
-```
-┌──────────────────────────────────────────────────────────────────────┐
-│                          FRONTEND (Vercel CDN)                       │
-│                                                                      │
-│  ┌───────────────────┐          ┌────────────────────────────────┐  │
-│  │   DM Panel Tab    │          │     Player View Tab (TV)       │  │
-│  │  (React + Zustand)│ ──sync── │   (React, canvas only)         │  │
-│  │  - PixiJS Board   │          │   - PixiJS Board (read-only)   │  │
-│  │  - Three.js Board │          │   - Fog of War overlay         │  │
-│  │  - Controls Panel │          │                                │  │
-│  └────────┬──────────┘          └────────────────────────────────┘  │
-│           │ @supabase/supabase-js                                    │
-└───────────┼──────────────────────────────────────────────────────────┘
-            │
-            ▼
-┌──────────────────────────────────────────────────────────────────────┐
-│                     SUPABASE (BaaS)                                   │
-│                                                                      │
-│  ┌────────────┐  ┌─────────────┐  ┌───────────────┐  ┌──────────┐  │
-│  │  Auth       │  │  PostgreSQL │  │   Realtime    │  │ Storage  │  │
-│  │  JWT + RLS  │  │  + JSONB    │  │   WebSockets  │  │  CDN     │  │
-│  │  OAuth      │  │  maps table │  │   Broadcast   │  │Textures  │  │
-│  │  Magic Link │  │  users      │  │   Presence    │  │Audio     │  │
-│  └────────────┘  └─────────────┘  └───────────────┘  └──────────┘  │
-└──────────────────────────────────────────────────────────────────────┘
+🔒 = requiere Bearer token
 ```
 
 ---
 
-## 11. Decisiones de Arquitectura — Resumen
+## 7. Estructura del Monorepo
+
+```
+dungeonGenerator/
+├── apps/
+│   ├── web/                  ← Frontend React/Vite (actual /src)
+│   │   ├── src/
+│   │   │   ├── components/   ← DMPanel, etc.
+│   │   │   ├── renderers/    ← PixiBoard, ThreeBoard
+│   │   │   ├── store/        ← Zustand (boardStore + authStore)
+│   │   │   ├── services/     ← api.js (HTTP client)
+│   │   │   └── pages/        ← Login, Register, Dashboard, Editor
+│   │   └── package.json
+│   │
+│   └── api/                  ← Backend Node.js/Express
+│       ├── src/
+│       │   ├── routes/       ← auth.js, maps.js, campaigns.js
+│       │   ├── middleware/   ← auth.js (JWT verify)
+│       │   ├── prisma/       ← schema.prisma
+│       │   └── index.js
+│       └── package.json
+│
+├── epics.md
+├── architecture.md
+└── README.md
+```
+
+---
+
+## 8. Persistencia — Estrategia Local-First
+
+```
+Editar mapa (sin auth):
+  Zustand (RAM) ←→ localStorage (auto-save cada 30s)
+
+Editar mapa (con auth):
+  Zustand (RAM) ←→ localStorage (cache offline)
+                ←→ PUT /api/maps/:id (auto-save cada 30s, debounced)
+
+Abrir mapa:
+  1. GET /api/maps/:id (si hay auth + internet)
+  2. fallback a localStorage si offline
+  3. Al reconectar → PUT sync
+```
+
+---
+
+## 9. Multiplayer en V2 (WebSockets)
+
+Cuando lleguemos a V2, agregamos **Socket.io** al backend:
+
+```
+socket.join(`session:${inviteCode}`)
+
+// DM emite:
+socket.emit("tile_update", { x, y, tile })
+socket.emit("token_move", { tokenId, x, y })
+socket.emit("fow_reveal", { x, y })
+
+// Servidor hace broadcast a todos en la sala
+io.to(`session:${inviteCode}`).emit("tile_update", data)
+```
+
+No es necesario reescribir nada — Socket.io se agrega como middleware en el mismo servidor Express.
+
+---
+
+## 10. Variables de Entorno
+
+```bash
+# apps/api/.env
+DATABASE_URL="postgresql://..."   # Neon connection string
+JWT_SECRET="..."                   # secret para access tokens
+REFRESH_SECRET="..."               # secret para refresh tokens
+PORT=3001
+CORS_ORIGIN="http://localhost:5173" # en prod: https://dungeongenerator.vercel.app
+
+# apps/web/.env
+VITE_API_URL="http://localhost:3001"
+```
+
+---
+
+## 11. Decisiones — Resumen
 
 | Decisión | Elegido | Descartado | Razón |
-|---------|--------|-----------|-------|
-| Base de datos | **PostgreSQL + JSONB** | MongoDB, Firebase | Relacional + documental, open source |
-| BaaS | **Supabase** | Firebase, Appwrite | Postgres real, RLS, Realtime, Storage en uno |
-| Map data format | **JSONB blob** | Filas por tile | Performance, atomicidad, flexibilidad |
-| Auth | **Supabase Auth** (Discord OAuth) | Auth0, Firebase Auth | Integrado con DB + RLS |
-| Realtime | **Supabase Realtime** | Socket.io propio | Sin server adicional |
-| Frontend deploy | **Vercel** | Netlify, AWS S3 | Preview por PR, Edge network, CI/CD |
-| Asset storage | **Supabase Storage** → luego **R2** | AWS S3 | Simple ahora, R2 más barato a escala |
-| Primeros saves | **Local-first** (localStorage) | Solo cloud | Funciona offline, sin auth requerida para empezar |
+|---------|---------|-----------|-------|
+| Auth | **JWT propio (bcrypt + jsonwebtoken)** | Supabase Auth | Sin costo, control total |
+| Base de datos | **Neon PostgreSQL + Prisma** | Supabase, MongoDB | Ya conocido, free, open |
+| Backend | **Node.js + Express** | Supabase Edge, Next.js API | Simple, conocido |
+| Realtime V2 | **Socket.io** | Supabase Realtime | Sin vendor lock-in |
+| Storage V1 | **Local filesystem** | Supabase Storage | Costo $0 |
+| Storage V2+ | **Cloudflare R2** | AWS S3 | Free 10 GB, barato a escala |
+| Frontend deploy | **Vercel** | Netlify | Edge CDN, preview por PR |
+| Backend deploy | **Render / Railway** | Heroku | Free tier activo |
 
 ---
 
-## 12. Orden de Implementación (Arquitectura)
+## 12. Roadmap de Implementación
 
 ```
-Fase 0 (ahora):     POC local (Zustand + localStorage) ✅
-Fase 1 (Wave 1-2):  Integrar Supabase Auth + cloud save de mapas
-Fase 2 (Wave 3):    Supabase Storage para thumbnails
-Fase 3 (V2):        Supabase Realtime para multiplayer
-Fase 4 (escala):    Evaluar self-host Supabase o migración parcial a R2
+Wave 0 (hecho ✅): POC PixiJS + Three.js + Zustand
+Wave 1: Estructura monorepo + backend Express + Prisma + Neon
+Wave 2: Auth (register/login/JWT) + páginas Login/Register/Dashboard
+Wave 3: Cloud save (PUT /maps/:id) + load de mapas
+Wave 4: Tokens + Initiative tracker en el editor
+Wave 5: Fog of War + Player View URL
+Wave 6: Name generators
+Wave 7: Audio system
+Wave 8: Export PNG/JSON
+Wave V2: Multiplayer con Socket.io
 ```
 
 ---
 
-*Última actualización: Marzo 2026*
+*Última actualización: Marzo 2026 — V1.0 Self-Hosted*
