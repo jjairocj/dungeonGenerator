@@ -181,7 +181,7 @@ export default function PixiBoard() {
             -R * Math.cos(Math.PI / 6), R * Math.sin(Math.PI / 6),
             -R * Math.cos(Math.PI / 6), -R * Math.sin(Math.PI / 6),
         ];
-        const localVerts = hexVertices.map((v, i) => v + (i % 2 === 0 ? hexW / 2 : R));
+        const localVerts = hexVertices; // Removed duplicate offset
 
         const drawBaseShape = (fillColor) => {
             if (isHex) {
@@ -673,7 +673,7 @@ export default function PixiBoard() {
                                 for (let c = 0; c < cols; c++) {
                                     const center = getHexCenter(c, r);
                                     // Use local drawing matching the tile offsets exactly
-                                    const mappedVerts = baseVerts.map((v, i) => v + (i % 2 === 0 ? center.x + hexW / 2 : center.y + R));
+                                    const mappedVerts = baseVerts.map((v, i) => v + (i % 2 === 0 ? center.x : center.y));
                                     go.poly(mappedVerts);
                                     go.stroke({ color: 0x000000, width: 1, alpha: 0.25 });
                                 }
@@ -728,7 +728,7 @@ export default function PixiBoard() {
                         if (gridType === 'hex') {
                             const center = getHexCenter(hc.c, hc.r);
                             const baseVerts = getHexVertices();
-                            const mappedVerts = baseVerts.map((v, i) => v + (i % 2 === 0 ? center.x + hexW / 2 : center.y + R));
+                            const mappedVerts = baseVerts.map((v, i) => v + (i % 2 === 0 ? center.x : center.y));
                             cp.poly(mappedVerts);
                             cp.fill({ color: 0xffffff, alpha: 0.15 });
                             cp.stroke({ color: 0xffffff, width: 2, alpha: 0.5 });
