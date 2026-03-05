@@ -288,7 +288,7 @@ export const useBoardStore = create((set, get) => ({
     const newLevels = [...levels];
     newLevels[activeLevelIndex].layers[activeLayerIndex] = {
       ...layer,
-      tiles: newTiles
+      tiles: filledTiles
     };
     set({ levels: newLevels });
   },
