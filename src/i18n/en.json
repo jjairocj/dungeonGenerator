@@ -126,6 +126,16 @@
             "mode": "Mode",
             "biome": "Biome",
             "tile": "Tile"
+        },
+        "tools": {
+            "brush": "Brush (Paint Tile)",
+            "eraser": "Eraser (Remove Tile)",
+            "fill": "Paint Bucket (Fill Area)",
+            "rectangle": "Rectangle (Click and drag)",
+            "ellipse": "Ellipse (Click and drag)",
+            "select": "Select Area",
+            "gridSquare": "Square Grid",
+            "gridHex": "Hexagonal Grid"
         }
     }
 }

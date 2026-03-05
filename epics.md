@@ -46,6 +46,9 @@ app.stage
 
 ### MVP
 
+> [!IMPORTANT]
+> **Normativa de Aseguramiento de Calidad (Hitos y User Epics)**: Toda nueva feature, re-estructuración matemática o de renderizado (Especialmente Grid y Geometría) **DEBE** ir siempre acompañada de su respectivo Test Unitario en `Vitest` antes del Commit con el fin de evitar regresiones visuales (Pixel Perfect preservation).
+
 | ID | Historia de usuario |
 |----|---------------------|
 | G-01 | Como DM, quiero un canvas de mapa configurable (tamaño en tiles: 20×20 hasta 100×100) para adaptarlo a escenas pequeñas o grandes. |

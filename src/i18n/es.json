@@ -126,6 +126,16 @@
             "mode": "Modo",
             "biome": "Bioma",
             "tile": "Tile"
+        },
+        "tools": {
+            "brush": "Pincel (Pintar Tile)",
+            "eraser": "Borrador (Eliminar Tile)",
+            "fill": "Bote de Pintura (Rellenar Área)",
+            "rectangle": "Rectángulo (Haz clic y arrastra)",
+            "ellipse": "Elipse (Haz clic y arrastra)",
+            "select": "Seleccionar Área",
+            "gridSquare": "Cuadrícula Ortogonal",
+            "gridHex": "Cuadrícula Hexagonal"
         }
     }
 }

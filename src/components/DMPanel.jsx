@@ -93,9 +93,9 @@ export default function DMPanel() {
         { id: PAINT_MODES.BRUSH, icon: '🖌️', label: t('dmPanel.tools.brush') },
         { id: PAINT_MODES.ERASER, icon: '🗑️', label: t('dmPanel.tools.eraser') },
         { id: PAINT_MODES.FILL, icon: '🪣', label: t('dmPanel.tools.fill') },
-        { id: PAINT_MODES.RECTANGLE, icon: '◫', label: t('dmPanel.tools.rectangle', 'Rectangle') },
-        { id: PAINT_MODES.ELLIPSE, icon: '⬬', label: t('dmPanel.tools.ellipse', 'Ellipse') },
-        { id: PAINT_MODES.SELECT, icon: '⬚', label: t('dmPanel.tools.select', 'Select') },
+        { id: PAINT_MODES.RECTANGLE, icon: '◫', label: t('dmPanel.tools.rectangle') },
+        { id: PAINT_MODES.ELLIPSE, icon: '⬬', label: t('dmPanel.tools.ellipse') },
+        { id: PAINT_MODES.SELECT, icon: '⬚', label: t('dmPanel.tools.select') },
     ];
 
     return (
@@ -122,7 +122,7 @@ export default function DMPanel() {
                         <button
                             className={`tool-btn ${gridType === 'square' ? 'active' : ''}`}
                             onClick={() => setGridType('square')}
-                            title="Square Grid"
+                            title={t('dmPanel.tools.gridSquare')}
                             style={{ flex: 1, padding: '2px', fontSize: '1rem' }}
                         >
                             🟩
@@ -130,7 +130,7 @@ export default function DMPanel() {
                         <button
                             className={`tool-btn ${gridType === 'hex' ? 'active' : ''}`}
                             onClick={() => setGridType('hex')}
-                            title="Hexagonal Grid"
+                            title={t('dmPanel.tools.gridHex')}
                             style={{ flex: 1, padding: '2px', fontSize: '1rem' }}
                         >
                             ⬡

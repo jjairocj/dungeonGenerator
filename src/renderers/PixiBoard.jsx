@@ -7,53 +7,12 @@ import { useBoardStore, PAINT_MODES } from '../store/boardStore';
 
 // ─── Layout constants ─────────────────────────────────────────────────────────
 const TILE_GAP = 0;
-const TILE_SIZE = 32; // For hex grid, this is the side length or distance from center to vertex
-const STEP = TILE_SIZE; // For square grid, this would be TILE_SIZE + TILE_GAP
+import {
+    TILE_SIZE, R, hexW, hexH,
+    getHexCenter, pixelToAxial, cubeRound, axialToOffset
+} from '../utils/hexMath';
 
-const R = TILE_SIZE / 2; // Hex radius (distance from center to vertex)
-const hexW = Math.sqrt(3) * R; // Width of a pointy-top hex
-const hexH = 2 * R; // Height of a pointy-top hex
-
-// Helper functions for Hex Math (Pointy Top, Odd-R offset)
-const getHexCenter = (c, r) => {
-    const x = c * hexW + (r % 2 !== 0 ? hexW / 2 : 0) + hexW / 2;
-    const y = r * 1.5 * R + R;
-    return { x, y };
-};
-
-// Pixel to Axial coordinate conversion
-const pixelToAxial = (x, y) => {
-    const q = (Math.sqrt(3) / 3 * x - 1 / 3 * y) / R;
-    const r = (2 / 3 * y) / R;
-    return { q, r, s: -q - r };
-};
-
-// Cube rounding to find nearest canonical hex center
-const cubeRound = (frac) => {
-    let q = Math.round(frac.q);
-    let r = Math.round(frac.r);
-    let s = Math.round(frac.s);
-
-    const q_diff = Math.abs(q - frac.q);
-    const r_diff = Math.abs(r - frac.r);
-    const s_diff = Math.abs(s - frac.s);
-
-    if (q_diff > r_diff && q_diff > s_diff) {
-        q = -r - s;
-    } else if (r_diff > s_diff) {
-        r = -q - s;
-    } else {
-        s = -q - r;
-    }
-    return { q, r, s };
-};
-
-// Axial to offset (Odd-R) conversion
-const axialToOffset = (q, r) => {
-    const col = q + (r - (r & 1)) / 2;
-    const row = r;
-    return { c: col, r: row };
-};
+const STEP = TILE_SIZE; // For square grid
 
 // ─── Tile color palette ───────────────────────────────────────────────────────
 const TILE_COLORS = {
@@ -161,6 +120,7 @@ export default function PixiBoard() {
     const timeRef = useRef(0);
     const paintingRef = useRef(false);
     const dragStartRef = useRef(null);
+    const hoveredTileRef = useRef({ c: -1, r: -1 });
     const shapePreviewRef = useRef(null);
     const stateRef = useRef({});
     const animFrameRef = useRef(null);
@@ -190,159 +150,59 @@ export default function PixiBoard() {
     const copySelection = useBoardStore((s) => s.copySelection);
     const pasteClipboard = useBoardStore((s) => s.pasteClipboard);
 
+    const gridType = useBoardStore((s) => s.gridType);
+
     // Keep stateRef current for use inside closures
-    stateRef.current = { levels, activeLevelIndex, activeLayerIndex, effects, currentBiome, paintMode, selectedTile, placeTile, floodFillAt, fillShape, selectionCoords, setSelection, clearSelection };
+    stateRef.current = { levels, activeLevelIndex, activeLayerIndex, effects, currentBiome, paintMode, showGrid, selectedTile, placeTile, floodFillAt, fillShape, selectionCoords, setSelection, clearSelection, gridType, copySelection, pasteClipboard };
 
     // ─ Tile draw logic ─
     const drawTile = useCallback((gfx, col, row, tileType, t) => {
         const colors = TILE_COLORS[tileType] || TILE_COLORS.grass;
         gfx.clear();
-        gfx.x = col * STEP;
-        gfx.y = row * STEP;
-
-        if (tileType === 'water') {
-            const waterBase = 0x3ab3d5;
-            const waterDeep = 0x2b9ec2;
-            const waterCaustic = 0x88e8f9;
-            gfx.rect(0, 0, TILE_SIZE, TILE_SIZE);
-            gfx.fill({ color: waterBase });
-            const waveSpeed1 = t * 1.2;
-            const waveSpeed2 = t * 0.8;
-            gfx.beginPath();
-            for (let i = 0; i < 3; i++) {
-                const y1 = ((i * 20 + waveSpeed1 * 15) % 60) - 10;
-                gfx.moveTo(-5, y1 + Math.sin(col + i) * 6);
-                gfx.lineTo(TILE_SIZE + 5, y1 + 10 + Math.cos(row + i) * 6);
-                const x1 = ((i * 20 - waveSpeed2 * 10) % 60) - 10;
-                gfx.moveTo(x1 + Math.cos(col + i) * 6, -5);
-                gfx.lineTo(x1 + 10 + Math.sin(row + i) * 6, TILE_SIZE + 5);
-            }
-            gfx.stroke({ color: waterCaustic, width: 2, alpha: 0.6 });
-            gfx.rect(0, TILE_SIZE - 6, TILE_SIZE, 6);
-            gfx.fill({ color: waterDeep, alpha: 0.4 });
-            const foamWave = Math.sin(t * 2.5 + col * 1.5) * 2;
-            gfx.beginPath();
-            gfx.moveTo(0, 4 + foamWave);
-            gfx.bezierCurveTo(15, 6 + foamWave, 35, 2 + foamWave, TILE_SIZE, 4 + foamWave);
-            gfx.stroke({ color: 0xffffff, width: 2.5, alpha: 0.85 });
-
-        } else if (tileType === 'lava') {
-            gfx.rect(0, 0, TILE_SIZE, TILE_SIZE);
-            gfx.fill({ color: colors.shade });
-            for (let b = 0; b < 5; b++) {
-                const bx = 6 + b * 8 + Math.sin(t * 1.5 + b * 1.3) * 3;
-                const by = 25 + Math.cos(t * 2.0 + b * 0.9) * 9;
-                const bs = 7 + Math.sin(t + b) * 2;
-                const heat = Math.sin(t * 3 + b) * 0.5 + 0.5;
-                gfx.ellipse(bx, by, bs, bs * 0.6);
-                gfx.fill({ color: heat > 0.5 ? 0xf39c12 : 0xe74c3c, alpha: 0.9 });
-            }
-
-        } else if (tileType === 'forest') {
-            gfx.rect(0, 0, TILE_SIZE, TILE_SIZE);
-            gfx.fill({ color: colors.base });
-            const fx = stateRef.current.effects;
-            const wind = fx.wind ? Math.sin(t * 2.0 + col * 0.8 + row * 0.5) * fx.windIntensity * 5 : 0;
-            gfx.rect(21 + wind * 0.3, 33, 7, 12);
-            gfx.fill({ color: 0x5a3320 });
-            gfx.poly([25 + wind, 6, 10 + wind * 0.7, 28, 40 + wind * 0.7, 28]);
-            gfx.fill({ color: 0x1e5c2a });
-            gfx.poly([25 + wind, 4, 12 + wind * 0.6, 24, 38 + wind * 0.6, 24]);
-            gfx.fill({ color: 0x27ae60 });
-
-        } else if (tileType === 'grass') {
-            gfx.rect(0, 0, TILE_SIZE, TILE_SIZE);
-            gfx.fill({ color: colors.base });
-
-            const fx = stateRef.current.effects;
-            const wind = fx.wind ? Math.sin(t * 2.2 + col * 0.6 + row * 0.4) * fx.windIntensity * 3 : 0;
-            [[8, 36], [14, 28], [24, 34], [34, 26], [42, 36]].forEach(([gx, gy]) => {
-                gfx.moveTo(gx, gy);
-                gfx.lineTo(gx + wind + 1, gy - 8);
-                gfx.stroke({ color: 0x3d7a3f, width: 1.5, alpha: 0.8 });
-            });
-        } else {
-            gfx.rect(0, 0, TILE_SIZE, TILE_SIZE);
-            gfx.fill({ color: colors.base });
-
-            if (tileType === 'stone') {
-                [[10, 15, 22, 30], [28, 8, 40, 22], [12, 36, 28, 44]].forEach(([x1, y1, x2, y2]) => {
-                    gfx.moveTo(x1, y1); gfx.lineTo(x2, y2);
-                    gfx.stroke({ color: colors.shade, width: 1, alpha: 0.4 });
-                });
-            } else if (tileType === 'dungeon') {
-                gfx.moveTo(0, TILE_SIZE / 2); gfx.lineTo(TILE_SIZE, TILE_SIZE / 2);
-                gfx.moveTo(TILE_SIZE / 2, 0); gfx.lineTo(TILE_SIZE / 2, TILE_SIZE);
-                gfx.stroke({ color: 0x3a3a5a, width: 1, alpha: 0.5 });
-            } else if (tileType === 'wall') {
-                const bh = TILE_SIZE / 4;
-                for (let r = 0; r < 4; r++) {
-                    const off = r % 2 === 0 ? 0 : TILE_SIZE / 4;
-                    for (let c = 0; c < 3; c++) {
-                        gfx.rect(c * (TILE_SIZE / 2) + off, r * bh + 1, TILE_SIZE / 2 - 2, bh - 2);
-                        gfx.fill({ color: colors.shade, alpha: 0.35 });
-                    }
-                }
-            } else if (tileType === 'sand') {
-                for (let si = 0; si < 3; si++) {
-                    gfx.ellipse(TILE_SIZE / 2, 14 + si * 12, TILE_SIZE / 3, 4);
-                    gfx.stroke({ color: 0xb8893a, width: 1, alpha: 0.3 });
-                }
-            } else if (tileType === 'snow') {
-                [[10, 10], [30, 8], [18, 26], [38, 30], [8, 36]].forEach(([sx, sy]) => {
-                    gfx.circle(sx, sy, 2);
-                    gfx.fill({ color: 0xffffff, alpha: 0.5 });
-                });
-            } else if (tileType === 'dirt') {
-                [[12, 18], [28, 12], [36, 28], [16, 36]].forEach(([sx, sy]) => {
-                    gfx.circle(sx, sy, 3);
-                    gfx.fill({ color: colors.shade, alpha: 0.35 });
-                });
-            }
-        }
 
         const isHex = stateRef.current.gridType === 'hex';
 
+        // 1. Asignar Local Offset
         if (isHex) {
-            // Pointy top hex polygon centered at drawing origin for simplicity
-            // To fit nicely inside TILE_SIZE bounding box, scale down to fit bounding box
-            const hexScale = TILE_SIZE / hexW;
-            const rScaled = R * hexScale;
-            // Vertices from top, going clockwise
-            const hexVertices = [
-                0, -rScaled,
-                rScaled * Math.cos(Math.PI / 6), -rScaled * Math.sin(Math.PI / 6),
-                rScaled * Math.cos(Math.PI / 6), rScaled * Math.sin(Math.PI / 6),
-                0, rScaled,
-                -rScaled * Math.cos(Math.PI / 6), rScaled * Math.sin(Math.PI / 6),
-                -rScaled * Math.cos(Math.PI / 6), -rScaled * Math.sin(Math.PI / 6),
-            ];
-
-            // Offset to fit in (0,0) to (TILE_SIZE, TILE_SIZE) origin locally
-            const localVerts = hexVertices.map((v, i) => v + (i % 2 === 0 ? hexW / 2 : rScaled));
-
-            gfx.clear(); // Re-clear rectangular base
-            gfx.poly(localVerts);
-            gfx.fill({ color: tileType === 'grass' ? colors.base : (tileType ? colors.base : 0x000000), alpha: tileType ? 1 : 0 }); // Fallback color if needed
-
-            // Add Hex Baked-in borders (Bottom 3 edges)
-            gfx.moveTo(localVerts[4], localVerts[5]); // Bottom Right
-            gfx.lineTo(localVerts[6], localVerts[7]); // Bottom
-            gfx.lineTo(localVerts[8], localVerts[9]); // Bottom Left
-            gfx.lineTo(localVerts[10], localVerts[11]);// Top Left
-            gfx.stroke({ color: 0x000000, width: 1, alpha: 0.2 });
-
+            const hexPos = getHexCenter(col, row);
+            gfx.x = hexPos.x;
+            gfx.y = hexPos.y;
         } else {
-            // Borde constante intrínseco (Grid sutil Square)
-            // Se dibuja en todos los tiles en sus bordes derecho e inferior
-            gfx.moveTo(0, TILE_SIZE - 1);
-            gfx.lineTo(TILE_SIZE, TILE_SIZE - 1);
-            gfx.stroke({ color: 0x000000, width: 1, alpha: 0.15 });
-
-            gfx.moveTo(TILE_SIZE - 1, 0);
-            gfx.lineTo(TILE_SIZE - 1, TILE_SIZE);
-            gfx.stroke({ color: 0x000000, width: 1, alpha: 0.15 });
+            gfx.x = col * STEP;
+            gfx.y = row * STEP;
         }
+
+        // 2. Matemáticas del Polígono Hexagonal Pointy-Top (Pixel Perfect)
+        const hexVertices = [
+            0, -R,
+            R * Math.cos(Math.PI / 6), -R * Math.sin(Math.PI / 6),
+            R * Math.cos(Math.PI / 6), R * Math.sin(Math.PI / 6),
+            0, R,
+            -R * Math.cos(Math.PI / 6), R * Math.sin(Math.PI / 6),
+            -R * Math.cos(Math.PI / 6), -R * Math.sin(Math.PI / 6),
+        ];
+        const localVerts = hexVertices.map((v, i) => v + (i % 2 === 0 ? hexW / 2 : R));
+
+        const drawBaseShape = (fillColor) => {
+            if (isHex) {
+                gfx.poly(localVerts);
+                gfx.fill({ color: fillColor, alpha: tileType ? 1 : 0 });
+            } else {
+                gfx.rect(0, 0, TILE_SIZE, TILE_SIZE);
+                gfx.fill({ color: fillColor, alpha: tileType ? 1 : 0 });
+            }
+        };
+
+        // 3. Render específico de biomas y animaciones (Simplificadas a bloques planos por petición)
+        if (tileType === 'water') {
+            drawBaseShape(0x3ab3d5);
+        } else if (tileType === 'lava') {
+            drawBaseShape(colors.shade);
+        } else {
+            drawBaseShape(colors.base);
+        }
+
+        // 4. Bordes Baked-in han sido removidos a favor del Overlay general
     }, []);
 
     // ─── Keyboard shortcuts: Ctrl+Z / Ctrl+Y / Ctrl+C / Ctrl+V ─────────────────
@@ -405,6 +265,7 @@ export default function PixiBoard() {
 
             // ── World container (Camera moves this) ──────────────────────────
             const worldContainer = new Container();
+            worldContainer.sortableChildren = true;
             app.stage.addChild(worldContainer);
 
             // ── Camera (G-03) ─────────────────────────────────────────────────
@@ -430,21 +291,38 @@ export default function PixiBoard() {
                 app.stage.addChild(dispSprite); // Must be on stage for filter to work
             }
 
+            // ── Grid Overlay (Hex/Square) ──────────────────────────────────
+            const gridOverlay = new Graphics();
+            gridOverlay.eventMode = 'none';
+            gridOverlay.zIndex = 40; // On top of tiles, below effects
+            worldContainer.addChild(gridOverlay);
+            effectsRef.current.gridOverlay = gridOverlay;
+
             // ── Effects container ──────────────────────────────────────────
             const fxContainer = new Container();
+            fxContainer.zIndex = 50;
             worldContainer.addChild(fxContainer);
 
             // ── Shape Preview Container (G-08) ────────
             const shapePreview = new Graphics();
             shapePreview.eventMode = 'none';
+            shapePreview.zIndex = 100;
             worldContainer.addChild(shapePreview);
             shapePreviewRef.current = shapePreview;
 
             // ── Selection Box Container (G-13) ────────
             const selectionBox = new Graphics();
             selectionBox.eventMode = 'none';
-            worldContainer.addChild(selectionBox);
+            selectionBox.zIndex = 101;
+            fxContainer.addChild(selectionBox);
             effectsRef.current.selectionBox = selectionBox;
+
+            // Highlight Cursor Box (Tile Preview)
+            const cursorPreviewGfx = new Graphics();
+            cursorPreviewGfx.eventMode = 'none';
+            cursorPreviewGfx.zIndex = 102; // Above selection box
+            fxContainer.addChild(cursorPreviewGfx);
+            effectsRef.current.cursorPreview = cursorPreviewGfx;
 
             // ── Dynamic Level/Layer Containers (G-09, G-11) ────────
             // Instead of one flat tile container, we hold layered containers
@@ -488,15 +366,6 @@ export default function PixiBoard() {
                                 drawTile(gfx, c, r, tileType, 0);
                             } else {
                                 gfx.clear(); // Transparent
-                            }
-
-                            if (isHex) {
-                                const hexPos = getHexCenter(c, r);
-                                gfx.x = hexPos.x;
-                                gfx.y = hexPos.y;
-                            } else {
-                                gfx.x = c * STEP;
-                                gfx.y = r * STEP;
                             }
 
                             if (tileType === 'water') {
@@ -551,7 +420,7 @@ export default function PixiBoard() {
                     r = Math.floor(pos.y / STEP);
                 }
 
-                if (pm === PAINT_MODES.RECTANGLE || pm === PAINT_MODES.ELLIPSE) {
+                if (pm === PAINT_MODES.RECTANGLE || pm === PAINT_MODES.ELLIPSE || pm === PAINT_MODES.SELECT) {
                     if (!isDrag) {
                         dragStartRef.current = { c, r };
                         if (shapePreviewRef.current) shapePreviewRef.current.clear();
@@ -585,10 +454,10 @@ export default function PixiBoard() {
                             pMaxY = (maxR + 1) * STEP;
                         }
 
-                        if (pm === PAINT_MODES.RECTANGLE) {
+                        if (pm === PAINT_MODES.RECTANGLE || pm === PAINT_MODES.SELECT) {
                             pGfx.rect(pMinX, pMinY, pMaxX - pMinX, pMaxY - pMinY);
-                            pGfx.fill({ color: 0x3498db, alpha: 0.3 });
-                            pGfx.stroke({ color: 0x2980b9, width: 2, alpha: 0.8 });
+                            pGfx.fill({ color: pm === PAINT_MODES.SELECT ? 0xf1c40f : 0x3498db, alpha: 0.3 });
+                            pGfx.stroke({ color: pm === PAINT_MODES.SELECT ? 0xf39c12 : 0x2980b9, width: 2, alpha: 0.8 });
                         } else if (pm === PAINT_MODES.ELLIPSE) {
                             const cx = (pMinX + pMaxX) / 2;
                             const cy = (pMinY + pMaxY) / 2;
@@ -637,6 +506,7 @@ export default function PixiBoard() {
                             minC: Math.min(startC, endC), maxC: Math.max(startC, endC),
                             minR: Math.min(startR, endR), maxR: Math.max(startR, endR)
                         });
+                        stateRef.current.copySelection();
                     } else {
                         stateRef.current.fillShape(dragStartRef.current.c, dragStartRef.current.r, c, r, pm);
                     }
@@ -733,11 +603,35 @@ export default function PixiBoard() {
                 }
             });
             window.addEventListener('pointermove', (e) => {
+                const canvas = canvasRef.current;
+                if (!canvas) return;
+                const rect = canvas.getBoundingClientRect();
+                const sx = e.clientX - rect.left;
+                const sy = e.clientY - rect.top;
+
                 if (panActive && cameraRef.current) {
-                    const canvas = canvasRef.current;
-                    if (!canvas) return;
-                    const rect = canvas.getBoundingClientRect();
-                    cameraRef.current.onPointerMove(e.clientX - rect.left, e.clientY - rect.top);
+                    cameraRef.current.onPointerMove(sx, sy);
+                }
+
+                // Update hovered tile for preview
+                if (cameraRef.current) {
+                    const localP = cameraRef.current.screenToWorld(sx, sy);
+                    const { gridType } = stateRef.current;
+                    let c, r;
+                    if (gridType === 'hex') {
+                        const axial = pixelToAxial(localP.x - hexW / 2, localP.y - R);
+                        const cube = cubeRound(axial);
+                        const offset = axialToOffset(cube.q, cube.r);
+                        c = offset.c; r = offset.r;
+                    } else {
+                        c = Math.floor(localP.x / STEP);
+                        r = Math.floor(localP.y / STEP);
+                    }
+                    if (c >= 0 && c <= MAX_COLS && r >= 0 && r <= MAX_ROWS) {
+                        hoveredTileRef.current = { c, r };
+                    } else {
+                        hoveredTileRef.current = { c: -1, r: -1 };
+                    }
                 }
             });
             window.addEventListener('pointerup', (e) => {
@@ -757,6 +651,44 @@ export default function PixiBoard() {
                 if (effectsRef.current.displacementSprite) {
                     effectsRef.current.displacementSprite.x += 1;
                     effectsRef.current.displacementSprite.y -= 1;
+                }
+
+                // Draw explicit Grid Overlay
+                const go = effectsRef.current.gridOverlay;
+                if (go) {
+                    go.clear();
+                    const { showGrid, gridType } = stateRef.current;
+                    if (showGrid) {
+                        if (gridType === 'hex') {
+                            const baseVerts = [
+                                0, -R,
+                                R * Math.cos(Math.PI / 6), -R * Math.sin(Math.PI / 6),
+                                R * Math.cos(Math.PI / 6), R * Math.sin(Math.PI / 6),
+                                0, R,
+                                -R * Math.cos(Math.PI / 6), R * Math.sin(Math.PI / 6),
+                                -R * Math.cos(Math.PI / 6), -R * Math.sin(Math.PI / 6),
+                            ];
+
+                            for (let r = 0; r < rows; r++) {
+                                for (let c = 0; c < cols; c++) {
+                                    const center = getHexCenter(c, r);
+                                    // Use local drawing matching the tile offsets exactly
+                                    const mappedVerts = baseVerts.map((v, i) => v + (i % 2 === 0 ? center.x + hexW / 2 : center.y + R));
+                                    go.poly(mappedVerts);
+                                    go.stroke({ color: 0x000000, width: 1, alpha: 0.25 });
+                                }
+                            }
+                        } else {
+                            for (let c = 0; c <= cols; c++) {
+                                go.moveTo(c * STEP, 0); go.lineTo(c * STEP, rows * STEP);
+                                go.stroke({ color: 0x000000, width: 1, alpha: 0.15 });
+                            }
+                            for (let r = 0; r <= rows; r++) {
+                                go.moveTo(0, r * STEP); go.lineTo(cols * STEP, r * STEP);
+                                go.stroke({ color: 0x000000, width: 1, alpha: 0.15 });
+                            }
+                        }
+                    }
                 }
 
                 // Draw static selection box (G-13)
@@ -781,6 +713,29 @@ export default function PixiBoard() {
                             sb.rect(sel.minC * STEP, sel.minR * STEP, w, h);
                             sb.fill({ color: 0xf1c40f, alpha: 0.15 });
                             sb.stroke({ color: 0xf39c12, width: 3, alpha: pulse });
+                        }
+                    }
+                }
+
+                // Draw Cursor Sub-Cell Highlighter
+                const cp = effectsRef.current.cursorPreview;
+                if (cp) {
+                    cp.clear();
+                    const hc = hoveredTileRef.current;
+                    const { paintMode, gridType } = stateRef.current;
+                    // Don't show cursor box if panning or dragging a shape
+                    if (hc.c !== -1 && !panActive && !dragStartRef.current) {
+                        if (gridType === 'hex') {
+                            const center = getHexCenter(hc.c, hc.r);
+                            const baseVerts = getHexVertices();
+                            const mappedVerts = baseVerts.map((v, i) => v + (i % 2 === 0 ? center.x + hexW / 2 : center.y + R));
+                            cp.poly(mappedVerts);
+                            cp.fill({ color: 0xffffff, alpha: 0.15 });
+                            cp.stroke({ color: 0xffffff, width: 2, alpha: 0.5 });
+                        } else {
+                            cp.rect(hc.c * STEP, hc.r * STEP, STEP, STEP);
+                            cp.fill({ color: 0xffffff, alpha: 0.15 });
+                            cp.stroke({ color: 0xffffff, width: 2, alpha: 0.5 });
                         }
                     }
                 }
@@ -833,14 +788,6 @@ export default function PixiBoard() {
 
                                     if (tt) {
                                         drawTile(tileRef.gfx, c, r, tt, t);
-                                        if (stateRef.current.gridType === 'hex') {
-                                            const hexPos = getHexCenter(c, r);
-                                            tileRef.gfx.x = hexPos.x;
-                                            tileRef.gfx.y = hexPos.y;
-                                        } else {
-                                            tileRef.gfx.x = c * STEP;
-                                            tileRef.gfx.y = r * STEP;
-                                        }
                                     }
                                 } else if (tt && ['lava', 'forest', 'grass', 'water'].includes(tt)) {
                                     drawTile(tileRef.gfx, c, r, tt, t);
@@ -905,7 +852,7 @@ export default function PixiBoard() {
             }
         };
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [gridCols, gridRows]); // Reinitialize if grid size changes (G-01)
+    }, [gridCols, gridRows, gridType]); // Reinitialize if grid size or type changes (G-01, G-10)
 
     // Tile reconciliation is now exclusively handled by renderFrame looping over stateRef.current.levels
 
@@ -939,7 +886,7 @@ export default function PixiBoard() {
             }}
             onPointerUp={() => { paintingRef.current = false; }}
         >
-            <canvas key={`${gridCols}-${gridRows}`} ref={canvasRef} style={{ display: 'block', width: '100%', height: '100%' }} />
+            <canvas key={`${gridCols}-${gridRows}-${gridType}`} ref={canvasRef} style={{ display: 'block', width: '100%', height: '100%' }} />
 
             {/* Zoom Controls Overlay */}
             <div style={{
