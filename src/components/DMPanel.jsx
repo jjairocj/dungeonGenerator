@@ -5,8 +5,12 @@ import LanguageSwitcher from './LanguageSwitcher';
 import '../styles/dmPanel.css';
 
 export default function DMPanel() {
+    // Renderer & Grid Type
     const rendererMode = useBoardStore((s) => s.rendererMode);
     const setRendererMode = useBoardStore((s) => s.setRendererMode);
+    const gridType = useBoardStore((s) => s.gridType);
+    const setGridType = useBoardStore((s) => s.setGridType);
+
     const selectedTile = useBoardStore((s) => s.selectedTile);
     const setSelectedTile = useBoardStore((s) => s.setSelectedTile);
     const effects = useBoardStore((s) => s.effects);
@@ -107,13 +111,31 @@ export default function DMPanel() {
                 </div>
 
                 {/* Renderer Toggle */}
-                <div className="renderer-toggle">
+                <div className="renderer-toggle" style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
                     <button
                         className={`renderer-btn ${rendererMode === '2d' ? 'active' : ''}`}
                         onClick={() => setRendererMode('2d')}
                     >
                         <span>⬜</span> 2D PixiJS
                     </button>
+                    <div style={{ display: 'flex', gap: '4px' }}>
+                        <button
+                            className={`tool-btn ${gridType === 'square' ? 'active' : ''}`}
+                            onClick={() => setGridType('square')}
+                            title="Square Grid"
+                            style={{ flex: 1, padding: '2px', fontSize: '1rem' }}
+                        >
+                            🟩
+                        </button>
+                        <button
+                            className={`tool-btn ${gridType === 'hex' ? 'active' : ''}`}
+                            onClick={() => setGridType('hex')}
+                            title="Hexagonal Grid"
+                            style={{ flex: 1, padding: '2px', fontSize: '1rem' }}
+                        >
+                            ⬡
+                        </button>
+                    </div>
                 </div>
             </div>
 

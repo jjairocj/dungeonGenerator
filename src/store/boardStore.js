@@ -69,7 +69,7 @@ const buildEmptyLevels = (cols, rows, defaultTile = 'grass') => {
 };
 
 /** BFS flood-fill: returns a new tiles map with contiguous region changed */
-const floodFill = (tiles, startCol, startRow, targetTile, cols, rows) => {
+const floodFill = (tiles, startCol, startRow, targetTile, cols, rows, isHex) => {
   const key = (c, r) => `${c},${r}`;
   const originType = tiles[key(startCol, startRow)];
   if (originType === targetTile) return tiles; // nothing to do
@@ -82,7 +82,27 @@ const floodFill = (tiles, startCol, startRow, targetTile, cols, rows) => {
     const [c, r] = queue.shift();
     newTiles[key(c, r)] = targetTile;
 
-    const neighbors = [[c - 1, r], [c + 1, r], [c, r - 1], [c, r + 1]];
+    let neighbors;
+    if (isHex) {
+      // Pointy-top, odd-r offset
+      const isOdd = (r % 2) !== 0;
+      if (isOdd) {
+        neighbors = [
+          [c, r - 1], [c + 1, r - 1], // Top-Left, Top-Right
+          [c - 1, r], [c + 1, r],     // Left, Right
+          [c, r + 1], [c + 1, r + 1]  // Bottom-Left, Bottom-Right
+        ];
+      } else {
+        neighbors = [
+          [c - 1, r - 1], [c, r - 1], // Top-Left, Top-Right
+          [c - 1, r], [c + 1, r],     // Left, Right
+          [c - 1, r + 1], [c, r + 1]  // Bottom-Left, Bottom-Right
+        ];
+      }
+    } else {
+      neighbors = [[c - 1, r], [c + 1, r], [c, r - 1], [c, r + 1]];
+    }
+
     for (const [nc, nr] of neighbors) {
       const nk = key(nc, nr);
       if (nc < 0 || nc >= cols || nr < 0 || nr >= rows) continue;
@@ -97,9 +117,12 @@ const floodFill = (tiles, startCol, startRow, targetTile, cols, rows) => {
 
 // ─── Store ────────────────────────────────────────────────────────────────────
 export const useBoardStore = create((set, get) => ({
-  // ── Renderer ──
+  // ── Renderer & Grid Type ──
   rendererMode: '2d',
   setRendererMode: (mode) => set({ rendererMode: mode }),
+
+  gridType: 'square', // 'square' | 'hex'
+  setGridType: (type) => set({ gridType: type }),
 
   // ── Grid size (G-01) ──
   gridCols: DEFAULT_COLS,
@@ -254,12 +277,12 @@ export const useBoardStore = create((set, get) => ({
 
   // ── Flood fill at position (G-05) ──
   floodFillAt: (col, row) => {
-    const { levels, activeLevelIndex, activeLayerIndex, selectedTile, gridCols, gridRows, _pushHistory } = get();
+    const { levels, activeLevelIndex, activeLayerIndex, selectedTile, gridCols, gridRows, gridType, _pushHistory } = get();
     const layer = levels[activeLevelIndex].layers[activeLayerIndex];
     if (layer.locked || !layer.visible) return;
 
-    const newTiles = floodFill(layer.tiles, col, row, selectedTile, gridCols, gridRows);
-    if (newTiles === layer.tiles) return; // nothing changed
+    const filledTiles = floodFill(layer.tiles, col, row, selectedTile, gridCols, gridRows, gridType === 'hex');
+    if (filledTiles === layer.tiles) return; // nothing changed
 
     _pushHistory();
     const newLevels = [...levels];
@@ -284,34 +307,101 @@ export const useBoardStore = create((set, get) => ({
     let changed = false;
     const newTiles = { ...layer.tiles };
 
+    const TILE_SIZE = 32;
+    const R = TILE_SIZE / 2;
+    const hexW = Math.sqrt(3) * R;
+    const hexH = 2 * R;
+
+    const getHexCenter = (c, r) => {
+      const x = c * hexW + (r % 2 !== 0 ? hexW / 2 : 0) + hexW / 2;
+      const y = r * 1.5 * R + R;
+      return { x, y };
+    };
+
+    const isHex = get().gridType === 'hex';
+
     if (shapeType === 'rectangle') {
-      for (let r = minR; r <= maxR; r++) {
-        for (let c = minC; c <= maxC; c++) {
-          const key = `${c},${r}`;
-          if (newTiles[key] !== selectedTile) {
-            newTiles[key] = selectedTile;
-            changed = true;
+      if (isHex) {
+        const { x: minX, y: minY } = getHexCenter(minC, minR);
+        const { x: maxX, y: maxY } = getHexCenter(maxC, maxR);
+        const boundsMinX = minX - hexW / 2;
+        const boundsMinY = minY - R;
+        const boundsMaxX = maxX + hexW / 2;
+        const boundsMaxY = maxY + R;
+
+        // Roughly scan a larger area and check centers
+        const scanC = maxC - minC + 2;
+        const scanR = maxR - minR + 2;
+
+        for (let r = Math.max(0, minR - 1); r <= Math.min(gridRows - 1, maxR + 1); r++) {
+          for (let c = Math.max(0, minC - 1); c <= Math.min(gridCols - 1, maxC + 1); c++) {
+            const center = getHexCenter(c, r);
+            if (center.x >= boundsMinX && center.x <= boundsMaxX && center.y >= boundsMinY && center.y <= boundsMaxY) {
+              const key = `${c},${r}`;
+              if (newTiles[key] !== selectedTile) {
+                newTiles[key] = selectedTile;
+                changed = true;
+              }
+            }
           }
         }
-      }
-    } else if (shapeType === 'ellipse') {
-      // Ellipse algorithm based on center and radii
-      const w = endCol - startCol;
-      const h = endRow - startRow;
-      const cx = startCol + w / 2;
-      const cy = startRow + h / 2;
-      const rx = Math.max(0.5, Math.abs(w / 2) + 0.3);
-      const ry = Math.max(0.5, Math.abs(h / 2) + 0.3);
-
-      for (let r = minR; r <= maxR; r++) {
-        for (let c = minC; c <= maxC; c++) {
-          const dx = c - cx;
-          const dy = r - cy;
-          if ((dx * dx) / (rx * rx) + (dy * dy) / (ry * ry) <= 1) {
+      } else {
+        for (let r = minR; r <= maxR; r++) {
+          for (let c = minC; c <= maxC; c++) {
             const key = `${c},${r}`;
             if (newTiles[key] !== selectedTile) {
               newTiles[key] = selectedTile;
               changed = true;
+            }
+          }
+        }
+      }
+    } else if (shapeType === 'ellipse') {
+      if (isHex) {
+        const { x: minX, y: minY } = getHexCenter(minC, minR);
+        const { x: maxX, y: maxY } = getHexCenter(maxC, maxR);
+        const boundsMinX = minX - hexW / 2;
+        const boundsMinY = minY - R;
+        const boundsMaxX = maxX + hexW / 2;
+        const boundsMaxY = maxY + R;
+
+        const cx = (boundsMinX + boundsMaxX) / 2;
+        const cy = (boundsMinY + boundsMaxY) / 2;
+        const rx = (boundsMaxX - boundsMinX) / 2;
+        const ry = (boundsMaxY - boundsMinY) / 2;
+
+        for (let r = Math.max(0, minR - 1); r <= Math.min(gridRows - 1, maxR + 1); r++) {
+          for (let c = Math.max(0, minC - 1); c <= Math.min(gridCols - 1, maxC + 1); c++) {
+            const center = getHexCenter(c, r);
+            const dx = center.x - cx;
+            const dy = center.y - cy;
+            if ((dx * dx) / (rx * rx) + (dy * dy) / (ry * ry) <= 1) {
+              const key = `${c},${r}`;
+              if (newTiles[key] !== selectedTile) {
+                newTiles[key] = selectedTile;
+                changed = true;
+              }
+            }
+          }
+        }
+      } else {
+        const w = maxC - minC;
+        const h = maxR - minR;
+        const cx = minC + w / 2;
+        const cy = minR + h / 2;
+        const rx = Math.max(0.5, Math.abs(w / 2) + 0.3);
+        const ry = Math.max(0.5, Math.abs(h / 2) + 0.3);
+
+        for (let r = minR; r <= maxR; r++) {
+          for (let c = minC; c <= maxC; c++) {
+            const dx = c - cx;
+            const dy = r - cy;
+            if ((dx * dx) / (rx * rx) + (dy * dy) / (ry * ry) <= 1) {
+              const key = `${c},${r}`;
+              if (newTiles[key] !== selectedTile) {
+                newTiles[key] = selectedTile;
+                changed = true;
+              }
             }
           }
         }
@@ -353,11 +443,23 @@ export const useBoardStore = create((set, get) => ({
 
     const { minC, minR, maxC, maxR } = selectionCoords;
     const clip = [];
+
+    // Origin for axial coordinates mapping
+    const originQ = minC - (minR - (minR & 1)) / 2;
+    const originR = minR;
+
     for (let r = minR; r <= maxR; r++) {
       for (let c = minC; c <= maxC; c++) {
         const key = `${c},${r}`;
         if (tiles[key]) {
-          clip.push({ dx: c - minC, dy: r - minR, type: tiles[key] });
+          const q = c - (r - (r & 1)) / 2;
+          clip.push({
+            dx: c - minC,
+            dy: r - minR,
+            dq: q - originQ,
+            dr: r - originR,
+            type: tiles[key]
+          });
         }
       }
     }
@@ -365,7 +467,7 @@ export const useBoardStore = create((set, get) => ({
   },
 
   pasteClipboard: (targetCol, targetRow) => {
-    const { clipboard, levels, activeLevelIndex, activeLayerIndex, gridCols, gridRows, _pushHistory } = get();
+    const { clipboard, levels, activeLevelIndex, activeLayerIndex, gridCols, gridRows, gridType, _pushHistory } = get();
     if (!clipboard || clipboard.length === 0) return;
 
     const layer = levels[activeLevelIndex].layers[activeLayerIndex];
@@ -373,10 +475,21 @@ export const useBoardStore = create((set, get) => ({
 
     let changed = false;
     const newTiles = { ...layer.tiles };
+    const isHex = gridType === 'hex';
+    const targetQ = targetCol - (targetRow - (targetRow & 1)) / 2;
+    const targetR = targetRow;
 
     for (const cell of clipboard) {
-      const c = targetCol + cell.dx;
-      const r = targetRow + cell.dy;
+      let c, r;
+      if (isHex && cell.dq !== undefined) {
+        const q = targetQ + cell.dq;
+        r = targetR + cell.dr;
+        c = q + (r - (r & 1)) / 2;
+      } else {
+        c = targetCol + cell.dx;
+        r = targetRow + cell.dy;
+      }
+
       if (c >= 0 && c < gridCols && r >= 0 && r < gridRows) {
         const key = `${c},${r}`;
         if (newTiles[key] !== cell.type) {

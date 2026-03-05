@@ -6,9 +6,54 @@ import {
 import { useBoardStore, PAINT_MODES } from '../store/boardStore';
 
 // ─── Layout constants ─────────────────────────────────────────────────────────
-const TILE_SIZE = 50;
 const TILE_GAP = 0;
-const STEP = TILE_SIZE + TILE_GAP;
+const TILE_SIZE = 32; // For hex grid, this is the side length or distance from center to vertex
+const STEP = TILE_SIZE; // For square grid, this would be TILE_SIZE + TILE_GAP
+
+const R = TILE_SIZE / 2; // Hex radius (distance from center to vertex)
+const hexW = Math.sqrt(3) * R; // Width of a pointy-top hex
+const hexH = 2 * R; // Height of a pointy-top hex
+
+// Helper functions for Hex Math (Pointy Top, Odd-R offset)
+const getHexCenter = (c, r) => {
+    const x = c * hexW + (r % 2 !== 0 ? hexW / 2 : 0) + hexW / 2;
+    const y = r * 1.5 * R + R;
+    return { x, y };
+};
+
+// Pixel to Axial coordinate conversion
+const pixelToAxial = (x, y) => {
+    const q = (Math.sqrt(3) / 3 * x - 1 / 3 * y) / R;
+    const r = (2 / 3 * y) / R;
+    return { q, r, s: -q - r };
+};
+
+// Cube rounding to find nearest canonical hex center
+const cubeRound = (frac) => {
+    let q = Math.round(frac.q);
+    let r = Math.round(frac.r);
+    let s = Math.round(frac.s);
+
+    const q_diff = Math.abs(q - frac.q);
+    const r_diff = Math.abs(r - frac.r);
+    const s_diff = Math.abs(s - frac.s);
+
+    if (q_diff > r_diff && q_diff > s_diff) {
+        q = -r - s;
+    } else if (r_diff > s_diff) {
+        r = -q - s;
+    } else {
+        s = -q - r;
+    }
+    return { q, r, s };
+};
+
+// Axial to offset (Odd-R) conversion
+const axialToOffset = (q, r) => {
+    const col = q + (r - (r & 1)) / 2;
+    const row = r;
+    return { c: col, r: row };
+};
 
 // ─── Tile color palette ───────────────────────────────────────────────────────
 const TILE_COLORS = {
@@ -256,16 +301,48 @@ export default function PixiBoard() {
             }
         }
 
-        // Borde constante intrínseco (Grid sutil)
-        // Se dibuja en todos los tiles en sus bordes derecho e inferior
-        gfx.moveTo(0, TILE_SIZE - 1);
-        gfx.lineTo(TILE_SIZE, TILE_SIZE - 1);
-        gfx.stroke({ color: 0x000000, width: 1, alpha: 0.15 });
+        const isHex = stateRef.current.gridType === 'hex';
 
-        gfx.moveTo(TILE_SIZE - 1, 0);
-        gfx.lineTo(TILE_SIZE - 1, TILE_SIZE);
-        gfx.stroke({ color: 0x000000, width: 1, alpha: 0.15 });
+        if (isHex) {
+            // Pointy top hex polygon centered at drawing origin for simplicity
+            // To fit nicely inside TILE_SIZE bounding box, scale down to fit bounding box
+            const hexScale = TILE_SIZE / hexW;
+            const rScaled = R * hexScale;
+            // Vertices from top, going clockwise
+            const hexVertices = [
+                0, -rScaled,
+                rScaled * Math.cos(Math.PI / 6), -rScaled * Math.sin(Math.PI / 6),
+                rScaled * Math.cos(Math.PI / 6), rScaled * Math.sin(Math.PI / 6),
+                0, rScaled,
+                -rScaled * Math.cos(Math.PI / 6), rScaled * Math.sin(Math.PI / 6),
+                -rScaled * Math.cos(Math.PI / 6), -rScaled * Math.sin(Math.PI / 6),
+            ];
 
+            // Offset to fit in (0,0) to (TILE_SIZE, TILE_SIZE) origin locally
+            const localVerts = hexVertices.map((v, i) => v + (i % 2 === 0 ? hexW / 2 : rScaled));
+
+            gfx.clear(); // Re-clear rectangular base
+            gfx.poly(localVerts);
+            gfx.fill({ color: tileType === 'grass' ? colors.base : (tileType ? colors.base : 0x000000), alpha: tileType ? 1 : 0 }); // Fallback color if needed
+
+            // Add Hex Baked-in borders (Bottom 3 edges)
+            gfx.moveTo(localVerts[4], localVerts[5]); // Bottom Right
+            gfx.lineTo(localVerts[6], localVerts[7]); // Bottom
+            gfx.lineTo(localVerts[8], localVerts[9]); // Bottom Left
+            gfx.lineTo(localVerts[10], localVerts[11]);// Top Left
+            gfx.stroke({ color: 0x000000, width: 1, alpha: 0.2 });
+
+        } else {
+            // Borde constante intrínseco (Grid sutil Square)
+            // Se dibuja en todos los tiles en sus bordes derecho e inferior
+            gfx.moveTo(0, TILE_SIZE - 1);
+            gfx.lineTo(TILE_SIZE, TILE_SIZE - 1);
+            gfx.stroke({ color: 0x000000, width: 1, alpha: 0.15 });
+
+            gfx.moveTo(TILE_SIZE - 1, 0);
+            gfx.lineTo(TILE_SIZE - 1, TILE_SIZE);
+            gfx.stroke({ color: 0x000000, width: 1, alpha: 0.15 });
+        }
     }, []);
 
     // ─── Keyboard shortcuts: Ctrl+Z / Ctrl+Y / Ctrl+C / Ctrl+V ─────────────────
@@ -303,8 +380,10 @@ export default function PixiBoard() {
 
         const cols = gridCols;
         const rows = gridRows;
-        const bW = cols * STEP + 2;
-        const bH = rows * STEP + 2;
+        const isHex = useBoardStore.getState().gridType === 'hex';
+
+        const bW = isHex ? (cols * hexW + hexW / 2 + 2) : (cols * STEP + 2);
+        const bH = isHex ? (rows * 1.5 * R + R + 2) : (rows * STEP + 2);
 
         const app = new Application();
         appRef.current = app;
@@ -397,6 +476,8 @@ export default function PixiBoard() {
 
                     const layerTiles = {};
                     // Build initial graphic objects
+                    const isHex = useBoardStore.getState().gridType === 'hex';
+
                     for (let r = 0; r < rows; r++) {
                         for (let c = 0; c < cols; c++) {
                             const key = `${c},${r}`;
@@ -407,6 +488,15 @@ export default function PixiBoard() {
                                 drawTile(gfx, c, r, tileType, 0);
                             } else {
                                 gfx.clear(); // Transparent
+                            }
+
+                            if (isHex) {
+                                const hexPos = getHexCenter(c, r);
+                                gfx.x = hexPos.x;
+                                gfx.y = hexPos.y;
+                            } else {
+                                gfx.x = c * STEP;
+                                gfx.y = r * STEP;
                             }
 
                             if (tileType === 'water') {
@@ -445,10 +535,21 @@ export default function PixiBoard() {
 
                 const { paintMode: pm, placeTile: pt, floodFillAt: ff } = stateRef.current;
 
-                // Get local position in the world to find which tile was clicked
                 const pos = worldContainer.toLocal(e.global);
-                const c = Math.floor(pos.x / STEP);
-                const r = Math.floor(pos.y / STEP);
+                let c, r;
+
+                if (stateRef.current.gridType === 'hex') {
+                    // Local coordinate is relative to WorldContainer.
+                    // Must shift offset because we drew hexes slightly padded.
+                    const axial = pixelToAxial(pos.x - hexW / 2, pos.y - R);
+                    const cube = cubeRound(axial);
+                    const offset = axialToOffset(cube.q, cube.r);
+                    c = offset.c;
+                    r = offset.r;
+                } else {
+                    c = Math.floor(pos.x / STEP);
+                    r = Math.floor(pos.y / STEP);
+                }
 
                 if (pm === PAINT_MODES.RECTANGLE || pm === PAINT_MODES.ELLIPSE) {
                     if (!isDrag) {
@@ -468,18 +569,32 @@ export default function PixiBoard() {
                         const pGfx = shapePreviewRef.current;
                         pGfx.clear();
 
+                        let pMinX, pMinY, pMaxX, pMaxY;
+
+                        if (stateRef.current.gridType === 'hex') {
+                            const cMin = getHexCenter(minC, minR);
+                            const cMax = getHexCenter(maxC, maxR);
+                            pMinX = cMin.x - hexW / 2;
+                            pMinY = cMin.y - R;
+                            pMaxX = cMax.x + hexW / 2;
+                            pMaxY = cMax.y + R;
+                        } else {
+                            pMinX = minC * STEP;
+                            pMinY = minR * STEP;
+                            pMaxX = (maxC + 1) * STEP;
+                            pMaxY = (maxR + 1) * STEP;
+                        }
+
                         if (pm === PAINT_MODES.RECTANGLE) {
-                            pGfx.rect(minC * STEP, minR * STEP, (maxC - minC + 1) * STEP, (maxR - minR + 1) * STEP);
+                            pGfx.rect(pMinX, pMinY, pMaxX - pMinX, pMaxY - pMinY);
                             pGfx.fill({ color: 0x3498db, alpha: 0.3 });
                             pGfx.stroke({ color: 0x2980b9, width: 2, alpha: 0.8 });
                         } else if (pm === PAINT_MODES.ELLIPSE) {
-                            const wC = maxC - minC;
-                            const hR = maxR - minR;
-                            const cx = (minC + wC / 2) * STEP + STEP / 2;
-                            const cy = (minR + hR / 2) * STEP + STEP / 2;
-                            const rx = ((wC + 1) * STEP) / 2;
-                            const ry = ((hR + 1) * STEP) / 2;
-                            pGfx.ellipse(cx, cy, rx, ry);
+                            const cx = (pMinX + pMaxX) / 2;
+                            const cy = (pMinY + pMaxY) / 2;
+                            const rx = (pMaxX - pMinX) / 2;
+                            const ry = (pMaxY - pMinY) / 2;
+                            pGfx.ellipse(cx, cy, Math.max(0.1, rx), Math.max(0.1, ry));
                             pGfx.fill({ color: 0x3498db, alpha: 0.3 });
                             pGfx.stroke({ color: 0x2980b9, width: 2, alpha: 0.8 });
                         }
@@ -648,14 +763,25 @@ export default function PixiBoard() {
                 const sb = effectsRef.current.selectionBox;
                 if (sb) {
                     sb.clear();
-                    const { selectionCoords: sel } = stateRef.current;
+                    const { selectionCoords: sel, gridType } = stateRef.current;
                     if (sel) {
-                        const w = (sel.maxC - sel.minC + 1) * STEP;
-                        const h = (sel.maxR - sel.minR + 1) * STEP;
-                        sb.rect(sel.minC * STEP, sel.minR * STEP, w, h);
-                        sb.fill({ color: 0xf1c40f, alpha: 0.15 });
                         const pulse = (Math.sin(t * 4) * 0.5 + 0.5) * 0.5 + 0.5;
-                        sb.stroke({ color: 0xf39c12, width: 3, alpha: pulse });
+
+                        if (gridType === 'hex') {
+                            // Draw bounding box enclosing selected hexes
+                            const { x: wMinX, y: wMinY } = getHexCenter(sel.minC, sel.minR);
+                            const { x: wMaxX, y: wMaxY } = getHexCenter(sel.maxC, sel.maxR);
+                            // Add extra padding to roughly cover the hexes
+                            sb.rect(wMinX - hexW, wMinY - hexH, (wMaxX - wMinX) + hexW * 2, (wMaxY - wMinY) + hexH * 2);
+                            sb.fill({ color: 0xf1c40f, alpha: 0.15 });
+                            sb.stroke({ color: 0xf39c12, width: 3, alpha: pulse });
+                        } else {
+                            const w = (sel.maxC - sel.minC + 1) * STEP;
+                            const h = (sel.maxR - sel.minR + 1) * STEP;
+                            sb.rect(sel.minC * STEP, sel.minR * STEP, w, h);
+                            sb.fill({ color: 0xf1c40f, alpha: 0.15 });
+                            sb.stroke({ color: 0xf39c12, width: 3, alpha: pulse });
+                        }
                     }
                 }
 
@@ -707,6 +833,14 @@ export default function PixiBoard() {
 
                                     if (tt) {
                                         drawTile(tileRef.gfx, c, r, tt, t);
+                                        if (stateRef.current.gridType === 'hex') {
+                                            const hexPos = getHexCenter(c, r);
+                                            tileRef.gfx.x = hexPos.x;
+                                            tileRef.gfx.y = hexPos.y;
+                                        } else {
+                                            tileRef.gfx.x = c * STEP;
+                                            tileRef.gfx.y = r * STEP;
+                                        }
                                     }
                                 } else if (tt && ['lava', 'forest', 'grass', 'water'].includes(tt)) {
                                     drawTile(tileRef.gfx, c, r, tt, t);
